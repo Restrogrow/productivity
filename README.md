@@ -1,13 +1,13 @@
 # Productivy
 
-Team task manager: teams, projects, a to-do list and a Kanban board, with live updates.
+Team task manager: a shared workspace of projects, a to-do list and a Kanban board, with live updates.
 
 Built with Next.js, Tailwind CSS, Supabase (Postgres, Auth, Realtime) and dnd-kit.
 
 ## Features
 
 - Email/password sign up and sign in
-- Teams: create a team, add teammates by email (they must sign up first)
+- One shared workspace for your team (no team selection needed)
 - Projects with default columns: To Do, In Progress, Done
 - To-do list view: quick add, tick to complete, show/hide completed
 - Kanban view: drag and drop between columns, add/rename/delete columns
@@ -42,8 +42,7 @@ Optional: to skip email confirmation while testing, disable "Confirm email" unde
 supabase/schema.sql        tables, RLS policies, triggers, RPCs, realtime
 scripts/run-sql.mjs        applies schema.sql using DATABASE_URL
 src/app/login              sign in / sign up
-src/app/dashboard          your teams
-src/app/team/[id]          team projects and members
+src/app/dashboard          your projects
 src/app/project/[id]       to-do list and Kanban views
 src/components             KanbanBoard, TaskList, TaskModal, Header
 src/lib                    Supabase client, types, helpers

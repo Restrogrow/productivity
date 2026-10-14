@@ -1,10 +1,10 @@
 import { Suspense } from "react";
-import TeamView from "./TeamView";
+import WhiteboardView from "./WhiteboardView";
 
 export default function Page() {
   return (
     <Suspense>
-      <TeamView />
+      <WhiteboardView />
     </Suspense>
   );
 }

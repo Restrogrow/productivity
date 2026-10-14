@@ -39,57 +39,59 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center px-4">
-      <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
-        <h1 className="text-2xl font-semibold">Productivy</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          {mode === "signin" ? "Sign in to your workspace" : "Create your account"}
-        </p>
+    <main className="flex min-h-screen items-center justify-center px-4 py-10">
+      <div className="w-full max-w-md">
+        <div className="mb-8 text-center">
+          <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-600 text-lg font-bold text-white shadow-lg shadow-indigo-600/25">
+            P
+          </span>
+          <h1 className="mt-4 text-3xl font-bold tracking-tight text-slate-900">Productivy</h1>
+          <p className="mt-2 text-sm text-slate-600">A shared workspace for your team’s tasks and projects.</p>
+        </div>
 
-        <form onSubmit={submit} className="mt-6 space-y-3">
-          {mode === "signup" && (
-            <input
-              className="input"
-              placeholder="Full name"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              required
-            />
-          )}
-          <input
-            className="input"
-            type="email"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
-          <input
-            className="input"
-            type="password"
-            placeholder="Password (min 6 characters)"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            minLength={6}
-            required
-          />
-          {error && <p className="text-sm text-red-600">{error}</p>}
-          {message && <p className="text-sm text-green-700">{message}</p>}
-          <button disabled={loading} className="btn-primary w-full">
-            {loading ? "Please wait…" : mode === "signin" ? "Sign in" : "Sign up"}
+        <div className="card p-6 sm:p-8">
+          <h2 className="text-xl font-semibold text-slate-900">
+            {mode === "signin" ? "Welcome back" : "Create your account"}
+          </h2>
+          <p className="mt-1 text-sm text-slate-500">
+            {mode === "signin" ? "Sign in to continue" : "Get started in seconds"}
+          </p>
+
+          <form onSubmit={submit} className="mt-6 space-y-4">
+            {mode === "signup" && (
+              <label className="block space-y-1.5">
+                <span className="text-xs font-medium text-slate-600">Full name</span>
+                <input className="input" placeholder="Your name" value={fullName} onChange={(e) => setFullName(e.target.value)} required />
+              </label>
+            )}
+            <label className="block space-y-1.5">
+              <span className="text-xs font-medium text-slate-600">Email</span>
+              <input className="input" type="email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            </label>
+            <label className="block space-y-1.5">
+              <span className="text-xs font-medium text-slate-600">Password</span>
+              <input className="input" type="password" placeholder="Minimum 6 characters" value={password} onChange={(e) => setPassword(e.target.value)} minLength={6} required />
+            </label>
+
+            {error && <p className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+            {message && <p className="rounded-xl bg-green-50 px-3 py-2 text-sm text-green-700">{message}</p>}
+
+            <button disabled={loading} className="btn-primary w-full">
+              {loading ? "Please wait…" : mode === "signin" ? "Sign in" : "Create account"}
+            </button>
+          </form>
+
+          <button
+            onClick={() => {
+              setMode(mode === "signin" ? "signup" : "signin");
+              setError(null);
+              setMessage(null);
+            }}
+            className="mt-5 w-full text-center text-sm text-slate-600 transition hover:text-indigo-600"
+          >
+            {mode === "signin" ? "No account? Sign up" : "Already have an account? Sign in"}
           </button>
-        </form>
-
-        <button
-          onClick={() => {
-            setMode(mode === "signin" ? "signup" : "signin");
-            setError(null);
-            setMessage(null);
-          }}
-          className="mt-4 w-full text-center text-sm text-slate-600 hover:text-slate-900"
-        >
-          {mode === "signin" ? "No account? Sign up" : "Already have an account? Sign in"}
-        </button>
+        </div>
       </div>
     </main>
   );

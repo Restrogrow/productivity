@@ -97,7 +97,7 @@ export default function KanbanBoard(props: Props) {
         onDragStateChange(null);
       }}
     >
-      <div className="flex items-start gap-4 overflow-x-auto pb-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {columns.map((column) => (
           <KanbanColumn
             key={column.id}
@@ -108,22 +108,6 @@ export default function KanbanBoard(props: Props) {
           />
         ))}
 
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!newColumn.trim()) return;
-            onAddColumn(newColumn.trim());
-            setNewColumn("");
-          }}
-          className="w-72 shrink-0"
-        >
-          <input
-            className="input bg-slate-50"
-            placeholder="+ Add column"
-            value={newColumn}
-            onChange={(e) => setNewColumn(e.target.value)}
-          />
-        </form>
       </div>
 
       <DragOverlay>{activeTask && <TaskCard task={activeTask} members={members} dragging />}</DragOverlay>
@@ -151,16 +135,16 @@ function KanbanColumn({
   return (
     <div
       ref={setNodeRef}
-      className={`flex w-72 shrink-0 flex-col rounded-xl p-3 transition-colors ${highlighted ? "bg-indigo-50 ring-2 ring-indigo-200" : "bg-slate-100"}`}
+      className={`flex w-full flex-col rounded-2xl border p-4 shadow-sm transition-all ${highlighted ? "border-indigo-300 bg-indigo-50/80 ring-2 ring-indigo-200" : "border-slate-200 bg-white"}`}
     >
       <div className="mb-3 flex items-center justify-between gap-2">
         <input
-          className="min-w-0 flex-1 bg-transparent text-sm font-semibold outline-none"
+          className="min-w-0 flex-1 bg-transparent text-sm font-bold text-slate-800 outline-none placeholder:text-slate-400"
           value={name}
           onChange={(e) => setName(e.target.value)}
           onBlur={() => name.trim() && name !== column.name && onRenameColumn(column.id, name.trim())}
         />
-        <span className="text-xs text-slate-500">{tasks.length}</span>
+        <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700">{tasks.length}</span>
         <button
           onClick={() => (confirmDelete ? onDeleteColumn(column.id) : setConfirmDelete(true))}
           onBlur={() => setConfirmDelete(false)}
@@ -172,7 +156,7 @@ function KanbanColumn({
       </div>
 
       <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
-        <div className="flex min-h-10 flex-col gap-2">
+        <div className="flex min-h-20 flex-col gap-2 rounded-xl bg-slate-50/80 p-2">
           {tasks.map((task) => (
             <SortableTask
               key={task.id}
@@ -182,6 +166,11 @@ function KanbanColumn({
               movedBy={remoteDragging[task.id]}
             />
           ))}
+          {tasks.length === 0 && (
+            <div className="flex flex-1 items-center justify-center rounded-lg border-2 border-dashed border-slate-200 px-3 py-6 text-center text-xs text-slate-400">
+              Drop task here
+            </div>
+          )}
         </div>
       </SortableContext>
 
@@ -206,7 +195,7 @@ function KanbanColumn({
       ) : (
         <button
           onClick={() => setAdding(true)}
-          className="mt-2 rounded-md px-2 py-1.5 text-left text-sm text-slate-500 hover:bg-slate-200"
+          className="mt-2 flex items-center gap-1 rounded-lg px-2 py-1.5 text-left text-sm font-medium text-slate-500 transition hover:bg-indigo-50 hover:text-indigo-700"
         >
           + Add task
         </button>
@@ -258,7 +247,7 @@ function TaskCard({
 }) {
   return (
     <div
-      className={`relative cursor-grab rounded-lg border border-slate-200 bg-white p-3 shadow-sm hover:border-indigo-300 ${dragging ? "rotate-2 shadow-lg" : ""} ${movedBy ? "animate-pulse" : ""}`}
+      className={`relative cursor-grab rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition-all hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-md ${dragging ? "rotate-2 shadow-lg" : ""} ${movedBy ? "animate-pulse" : ""}`}
       style={movedBy ? { boxShadow: `0 0 0 2px ${movedBy.color}` } : undefined}
     >
       {movedBy && (

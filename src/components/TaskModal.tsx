@@ -36,7 +36,7 @@ export default function TaskModal({ task, columns, members, onClose, onSave, onD
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4" onClick={onClose}>
-      <form onSubmit={save} onClick={(e) => e.stopPropagation()} className="card w-full max-w-lg space-y-4 p-6">
+      <form onSubmit={save} onClick={(e) => e.stopPropagation()} className="card w-full max-w-lg space-y-5 p-6 shadow-xl">
         <input
           className="w-full text-lg font-semibold outline-none"
           value={title}

@@ -13,14 +13,31 @@ export default function Header({ email }: { email?: string | null }) {
   }
 
   return (
-    <header className="border-b border-slate-200 bg-white">
-      <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4">
-        <Link href="/dashboard" className="text-lg font-semibold text-slate-900">
-          Productivy
-        </Link>
-        <div className="flex items-center gap-4 text-sm text-slate-600">
-          {email && <span className="hidden sm:inline">{email}</span>}
-          <button onClick={signOut} className="rounded-md px-3 py-1.5 hover:bg-slate-100">
+    <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/75 backdrop-blur-xl">
+      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4">
+        <div className="flex items-center gap-6">
+          <Link href="/dashboard" className="flex items-center gap-2">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-sm font-bold text-white shadow-sm shadow-indigo-600/25">
+              P
+            </span>
+            <span className="text-lg font-bold tracking-tight text-slate-900">Productivy</span>
+          </Link>
+          <nav className="hidden items-center gap-1 md:flex">
+            <Link href="/dashboard" className="rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900">
+              Projects
+            </Link>
+            <Link href="/whiteboard" className="rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900">
+              Whiteboard
+            </Link>
+          </nav>
+        </div>
+        <div className="flex items-center gap-3">
+          {email && (
+            <span className="hidden rounded-full bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-600 sm:inline">
+              {email}
+            </span>
+          )}
+          <button onClick={signOut} className="btn-secondary px-3 py-1.5 text-sm">
             Sign out
           </button>
         </div>

@@ -21,6 +21,8 @@ export default function ProjectView() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [view, setView] = useState<"list" | "board">("board");
+  const [addingColumn, setAddingColumn] = useState(false);
+  const [newColumnName, setNewColumnName] = useState("");
   const [editing, setEditing] = useState<Task | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -147,6 +149,14 @@ export default function ProjectView() {
     notifyChanged();
   }
 
+  async function submitColumn(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newColumnName.trim()) return;
+    await addColumn(newColumnName.trim());
+    setNewColumnName("");
+    setAddingColumn(false);
+  }
+
   async function renameColumn(columnId: string, name: string) {
     setColumns((prev) => prev.map((c) => (c.id === columnId ? { ...c, name } : c)));
     await supabase.from("columns").update({ name }).eq("id", columnId);
@@ -169,34 +179,67 @@ export default function ProjectView() {
         ref={mainRef}
         onPointerMove={trackCursor}
         onPointerLeave={collab.hideCursor}
-        className="relative mx-auto min-h-[calc(100vh-3.5rem)] max-w-7xl px-4 py-6"
+        className="relative mx-auto min-h-[calc(100vh-3.5rem)] max-w-7xl px-4 py-6 sm:py-8"
       >
         <Cursors cursors={collab.cursors} view={view} />
         {project && (
-          <Link href={`/team/${project.team_id}`} className="text-sm text-slate-500 hover:text-slate-800">
-            ← Back to team
+          <Link href="/dashboard" className="inline-flex items-center gap-1 text-sm font-medium text-slate-500 transition hover:text-indigo-600">
+            ← Back to projects
           </Link>
         )}
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold">{project?.name ?? "…"}</h1>
-            {project?.description && <p className="text-sm text-slate-500">{project.description}</p>}
-          </div>
-          <div className="flex items-center gap-4">
-          <OnlineAvatars online={collab.online} myId={user.id} />
-          <div className="flex rounded-lg border border-slate-200 bg-white p-1 text-sm">
-            {(["list", "board"] as const).map((v) => (
-              <button
-                key={v}
-                onClick={() => setView(v)}
-                className={`rounded-md px-4 py-1.5 ${view === v ? "bg-indigo-600 text-white" : "text-slate-600 hover:bg-slate-100"}`}
-              >
-                {v === "list" ? "To-do list" : "Kanban"}
-              </button>
-            ))}
-          </div>
+        <div className="card mt-4 p-5 sm:p-6">
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
+            <div>
+              <p className="text-sm font-medium text-indigo-600">Project workspace</p>
+              <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+                {project?.name ?? "…"}
+              </h1>
+              {project?.description && (
+                <p className="mt-2 max-w-3xl text-sm text-slate-500 sm:text-base">{project.description}</p>
+              )}
+            </div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <OnlineAvatars online={collab.online} myId={user.id} />
+              <div className="inline-flex rounded-xl border border-slate-200/80 bg-slate-100/70 p-1">
+                {(["list", "board"] as const).map((v) => (
+                  <button
+                    key={v}
+                    onClick={() => setView(v)}
+                    className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                      view === v ? "bg-white text-indigo-700 shadow-sm" : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    {v === "list" ? "To-do list" : "Kanban"}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
+        {view === "board" && (
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold text-slate-900">Board</h2>
+            <button
+              onClick={() => setAddingColumn((v) => !v)}
+              className="btn-secondary px-3 py-1.5 text-sm"
+            >
+              {addingColumn ? "Cancel" : "+ Add column"}
+            </button>
+          </div>
+        )}
+        {addingColumn && view === "board" && (
+          <form onSubmit={submitColumn} className="card mt-3 flex items-center gap-2 p-3">
+            <input
+              className="input bg-slate-50/80"
+              placeholder="New column name"
+              value={newColumnName}
+              onChange={(e) => setNewColumnName(e.target.value)}
+              autoFocus
+              required
+            />
+            <button className="btn-primary shrink-0">Add</button>
+          </form>
+        )}
         {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
 
         <div className="mt-6">

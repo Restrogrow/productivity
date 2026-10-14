@@ -37,22 +37,27 @@ export default function TaskList({ columns, tasks, members, onCreate, onUpdate, 
 
   return (
     <div className="mx-auto max-w-3xl">
-      <form onSubmit={submit} className="flex gap-2">
+      <form onSubmit={submit} className="card flex items-center gap-2 p-3">
         <input
-          className="input"
+          className="input border-slate-300/70 bg-slate-50/80"
           placeholder="Add a task and press Enter"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
         />
-        <button className="btn-primary">Add</button>
+        <button className="btn-primary shrink-0">Add</button>
       </form>
 
-      <ul className="card mt-4 divide-y divide-slate-100">
+      <div className="mt-5 space-y-2">
         {visible.map((task) => {
           const done = task.column_id === lastCol?.id;
           const column = columns.find((c) => c.id === task.column_id);
           return (
-            <li key={task.id} className="flex items-center gap-3 px-4 py-3">
+            <div
+              key={task.id}
+              className={`card flex items-center gap-3 p-3 transition-all hover:-translate-y-0.5 hover:shadow-md ${
+                done ? "opacity-70" : ""
+              }`}
+            >
               <input
                 type="checkbox"
                 checked={done}
@@ -60,22 +65,31 @@ export default function TaskList({ columns, tasks, members, onCreate, onUpdate, 
                 className="h-4 w-4 cursor-pointer accent-indigo-600"
               />
               <button onClick={() => onOpen(task)} className="min-w-0 flex-1 text-left">
-                <p className={`truncate text-sm ${done ? "text-slate-400 line-through" : ""}`}>{task.title}</p>
+                <p className={`truncate text-sm font-medium ${done ? "text-slate-400 line-through" : "text-slate-800"}`}>{task.title}</p>
               </button>
-              <span className="hidden rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600 sm:inline">
+              <span className="hidden rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600 sm:inline">
                 {column?.name}
               </span>
               <PriorityBadge priority={task.priority} />
               <DueDate date={task.due_date} done={done} />
               <Avatar userId={task.assignee_id} members={members} />
-            </li>
+            </div>
           );
         })}
-        {visible.length === 0 && <li className="px-4 py-6 text-center text-sm text-slate-500">Nothing to do 🎉</li>}
-      </ul>
+        {visible.length === 0 && (
+          <div className="card flex flex-col items-center justify-center px-6 py-14 text-center">
+            <div className="text-3xl">🎉</div>
+            <p className="mt-2 text-sm font-medium text-slate-700">Nothing left to do</p>
+            <p className="text-xs text-slate-500">Add a task above to get started.</p>
+          </div>
+        )}
+      </div>
 
       {doneCount > 0 && (
-        <button onClick={() => setShowDone(!showDone)} className="mt-3 text-sm text-slate-500 hover:text-slate-800">
+        <button
+          onClick={() => setShowDone(!showDone)}
+          className="mt-4 text-sm font-medium text-slate-500 transition hover:text-indigo-600"
+        >
           {showDone ? "Hide" : "Show"} completed ({doneCount})
         </button>
       )}

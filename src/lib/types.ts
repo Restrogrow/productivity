@@ -24,6 +24,15 @@ export type Project = {
   created_at: string;
 };
 
+export type Whiteboard = {
+  id: string;
+  team_id: string;
+  name: string;
+  data: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type Column = {
   id: string;
   project_id: string;

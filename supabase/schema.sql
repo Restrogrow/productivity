@@ -235,5 +235,34 @@ begin
   if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'columns') then
     alter publication supabase_realtime add table public.columns;
   end if;
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'projects') then
+    alter publication supabase_realtime add table public.projects;
+  end if;
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'whiteboards') then
+    alter publication supabase_realtime add table public.whiteboards;
+  end if;
 end;
 $$;
+-- ---------- Whiteboards ----------
+create table if not exists public.whiteboards (
+  id uuid primary key default gen_random_uuid(),
+  team_id uuid not null references public.teams (id) on delete cascade,
+  name text not null,
+  data jsonb not null default '{"elements":[]}'::jsonb,
+  created_by uuid references public.profiles (id) on delete set null default auth.uid(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists whiteboards_team_idx on public.whiteboards (team_id);
+
+drop trigger if exists whiteboards_touch_updated_at on public.whiteboards;
+create trigger whiteboards_touch_updated_at
+  before update on public.whiteboards
+  for each row execute function public.touch_updated_at();
+
+alter table public.whiteboards enable row level security;
+
+drop policy if exists "whiteboards_all" on public.whiteboards;
+create policy "whiteboards_all" on public.whiteboards for all to authenticated
+  using (public.is_team_member(team_id)) with check (public.is_team_member(team_id));
