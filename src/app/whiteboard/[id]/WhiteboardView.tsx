@@ -720,6 +720,12 @@ export default function WhiteboardView() {
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white/80 px-3 py-2 backdrop-blur">
           <button onClick={() => router.push("/whiteboard")} className="btn-secondary px-3 py-1.5 text-sm">← Boards</button>
           <input value={name} onChange={(e) => setName(e.target.value)} onBlur={async () => { await supabase.from("whiteboards").update({ name }).eq("id", id); }} className="input max-w-[240px] py-1.5" />
+          {teamId && (
+            <div className="flex items-center gap-1.5">
+              <ScreenShare roomId={id} userId={user?.id || ""} userName={user?.email?.split("@")[0] || "Someone"} />
+              <Recorder teamId={teamId} whiteboardId={id} />
+            </div>
+          )}
           <div className="mx-2 h-6 w-px bg-slate-200" />
           {TOOLS.map((t) => (
             <button
@@ -747,12 +753,6 @@ export default function WhiteboardView() {
             {[1, 2, 3, 5, 8, 12].map((w) => <option key={w} value={w}>{w}px</option>)}
           </select>
           <div className="ml-auto flex items-center gap-2">
-            {teamId && (
-              <>
-                <ScreenShare roomId={id} userId={user?.id || ""} userName={user?.email?.split("@")[0] || "Someone"} />
-                <Recorder teamId={teamId} whiteboardId={id} />
-              </>
-            )}
             <OnlineAvatars online={wbCollab.online} myId={user?.id} />
             <span className={`flex items-center gap-1 text-xs ${realtimeStatus === "live" ? "text-emerald-600" : realtimeStatus === "connecting" ? "text-amber-600" : "text-red-500"}`}>
               <span className={`h-1.5 w-1.5 rounded-full ${realtimeStatus === "live" ? "bg-emerald-500" : realtimeStatus === "connecting" ? "bg-amber-500 animate-pulse" : "bg-red-500"}`} />
