@@ -54,6 +54,8 @@ export default function WhiteboardView() {
   const user = useUser();
   const [name, setName] = useState("Whiteboard");
   const [teamId, setTeamId] = useState<string | null>(null);
+  const [showRecordings, setShowRecordings] = useState(false);
+  const [recordings, setRecordings] = useState<any[]>([]);
   const [tool, setTool] = useState<string>("select");
   const [strokeColor, setStrokeColor] = useState("#0f172a");
   const [fillColor, setFillColor] = useState("#fef08a");
@@ -375,6 +377,20 @@ export default function WhiteboardView() {
 
   // presence + cursors for this whiteboard
   const wbCollab = useCollaboration(`wb-${id}`, user?.id, user?.email?.split("@")[0] || "Someone", () => {});
+
+  // fetch recordings for this whiteboard
+  const loadRecordings = useCallback(async () => {
+    const { data } = await supabase
+      .from("recordings")
+      .select("*")
+      .eq("whiteboard_id", id)
+      .order("created_at", { ascending: false });
+    setRecordings(data ?? []);
+  }, [id]);
+
+  useEffect(() => {
+    if (showRecordings) loadRecordings();
+  }, [showRecordings, loadRecordings]);
 
   // resize canvas
   useEffect(() => {
@@ -723,7 +739,7 @@ export default function WhiteboardView() {
           {teamId && (
             <div className="flex items-center gap-1.5">
               <ScreenShare roomId={id} userId={user?.id || ""} userName={user?.email?.split("@")[0] || "Someone"} />
-              <Recorder teamId={teamId} whiteboardId={id} />
+              <Recorder teamId={teamId} whiteboardId={id} onRecordingSaved={loadRecordings} />
             </div>
           )}
           <div className="mx-2 h-6 w-px bg-slate-200" />
@@ -763,6 +779,12 @@ export default function WhiteboardView() {
             <button onClick={handleRedo} className="btn-secondary px-3 py-1.5 text-sm">Redo</button>
             <button onClick={() => { if (confirm("Clear board?")) { const before = clone(elementsRef.current); elementsRef.current = []; selectedRef.current.clear(); setSelectedCount(0); commitElements([], before); } }} className="btn-secondary px-3 py-1.5 text-sm">Clear</button>
             <button onClick={async () => { await saveNow(); }} className="btn-primary px-3 py-1.5 text-sm">{saving ? "Saving..." : "Save"}</button>
+            <button onClick={() => setShowRecordings(true)} className="btn-secondary flex items-center gap-1.5 px-3 py-1.5 text-sm">
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+              Recordings ({recordings.length})
+            </button>
             <button onClick={() => {
               const canvas = canvasRef.current;
               if (!canvas) return;
@@ -815,6 +837,70 @@ export default function WhiteboardView() {
           {" · Space+drag to pan · Wheel to zoom · Delete to remove selected"}
         </div>
       </div>
+
+      {/* Recordings viewer panel */}
+      {showRecordings && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setShowRecordings(false)}>
+          <div className="max-h-[80vh] w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+              <h2 className="text-lg font-semibold text-slate-900">Recordings</h2>
+              <button onClick={() => setShowRecordings(false)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="max-h-[60vh] overflow-y-auto p-5">
+              {recordings.length === 0 ? (
+                <div className="py-12 text-center">
+                  <div className="text-4xl">&#127909;</div>
+                  <p className="mt-3 text-sm text-slate-500">No recordings yet. Click &quot;Record&quot; to capture your screen.</p>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {recordings.map((rec) => (
+                    <RecordingItem key={rec.id} rec={rec} />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RecordingItem({ rec }: { rec: any }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    supabase.storage
+      .from("recordings")
+      .createSignedUrl(rec.storage_path, 3600)
+      .then(({ data }) => {
+        setUrl(data?.signedUrl ?? null);
+        setLoading(false);
+      });
+  }, [rec.storage_path]);
+
+  const fmtDur = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-slate-200">
+      <div className="flex items-center justify-between bg-slate-50 px-4 py-2.5">
+        <div>
+          <p className="text-sm font-medium text-slate-800">{rec.name}</p>
+          <p className="text-xs text-slate-400">{new Date(rec.created_at).toLocaleString()} - {fmtDur(rec.duration_seconds)}</p>
+        </div>
+        {url && (
+          <a href={url} download={rec.name} className="btn-secondary px-3 py-1 text-xs">Download</a>
+        )}
+      </div>
+      {url && (
+        <video src={url} controls className="aspect-video w-full bg-black" />
+      )}
     </div>
   );
 }
