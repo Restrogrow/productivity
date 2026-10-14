@@ -859,7 +859,7 @@ export default function WhiteboardView() {
               ) : (
                 <div className="flex flex-col gap-3">
                   {recordings.map((rec) => (
-                    <RecordingItem key={rec.id} rec={rec} />
+                    <RecordingItem key={rec.id} rec={rec} onDelete={loadRecordings} />
                   ))}
                 </div>
               )}
@@ -871,9 +871,10 @@ export default function WhiteboardView() {
   );
 }
 
-function RecordingItem({ rec }: { rec: any }) {
+function RecordingItem({ rec, onDelete }: { rec: any; onDelete?: () => void }) {
   const [url, setUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     supabase.storage
@@ -887,6 +888,15 @@ function RecordingItem({ rec }: { rec: any }) {
 
   const fmtDur = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
 
+  const handleDelete = async () => {
+    if (!confirm("Delete this recording?")) return;
+    setDeleting(true);
+    await supabase.storage.from("recordings").remove([rec.storage_path]);
+    await supabase.from("recordings").delete().eq("id", rec.id);
+    setDeleting(false);
+    onDelete?.();
+  };
+
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200">
       <div className="flex items-center justify-between bg-slate-50 px-4 py-2.5">
@@ -894,9 +904,18 @@ function RecordingItem({ rec }: { rec: any }) {
           <p className="text-sm font-medium text-slate-800">{rec.name}</p>
           <p className="text-xs text-slate-400">{new Date(rec.created_at).toLocaleString()} - {fmtDur(rec.duration_seconds)}</p>
         </div>
-        {url && (
-          <a href={url} download={rec.name} className="btn-secondary px-3 py-1 text-xs">Download</a>
-        )}
+        <div className="flex items-center gap-2">
+          {url && (
+            <a href={url} download={rec.name} className="btn-secondary px-3 py-1 text-xs">Download</a>
+          )}
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            className="rounded-lg px-2 py-1 text-xs text-red-600 hover:bg-red-50"
+          >
+            {deleting ? "..." : "Delete"}
+          </button>
+        </div>
       </div>
       {url && (
         <video src={url} controls className="aspect-video w-full bg-black" />

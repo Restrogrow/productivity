@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
 type Props = {
@@ -20,6 +20,7 @@ export default function Recorder({ teamId, projectId, whiteboardId, onRecordingS
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const elapsedRef = useRef(0); // ref so onstop always sees the latest value
 
   useEffect(() => {
     return () => {
@@ -30,13 +31,11 @@ export default function Recorder({ teamId, projectId, whiteboardId, onRecordingS
 
   const startRecording = async () => {
     try {
-      // Capture screen
       const screenStream = await navigator.mediaDevices.getDisplayMedia({
         video: { frameRate: { ideal: 30 } },
         audio: true,
       });
 
-      // Try to also get microphone
       let micStream: MediaStream | null = null;
       try {
         micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -44,7 +43,6 @@ export default function Recorder({ teamId, projectId, whiteboardId, onRecordingS
         // Mic not available, continue without it
       }
 
-      // Combine tracks
       const tracks = [
         ...screenStream.getVideoTracks(),
         ...screenStream.getAudioTracks(),
@@ -53,41 +51,46 @@ export default function Recorder({ teamId, projectId, whiteboardId, onRecordingS
       const combinedStream = new MediaStream(tracks);
       streamRef.current = combinedStream;
 
-      // Pick a supported mime type
       const mimeTypes = [
         "video/webm;codecs=vp9,opus",
         "video/webm;codecs=vp8,opus",
         "video/webm",
-        "video/mp4",
       ];
-      const mimeType = mimeTypes.find((t) => MediaRecorder.isTypeSupported(t)) || "";
+      const mimeType = mimeTypes.find((t) => MediaRecorder.isTypeSupported(t)) || "video/webm";
 
-      const recorder = new MediaRecorder(
-        combinedStream,
-        mimeType ? { mimeType, videoBitsPerSecond: 2_500_000 } : undefined,
-      );
+      const recorder = new MediaRecorder(combinedStream, {
+        mimeType,
+        videoBitsPerSecond: 2_500_000,
+      });
       recorderRef.current = recorder;
       chunksRef.current = [];
+      elapsedRef.current = 0;
 
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
 
       recorder.onstop = async () => {
-        const blob = new Blob(chunksRef.current, { type: mimeType || "video/webm" });
-        await saveRecording(blob);
+        const blob = new Blob(chunksRef.current, { type: mimeType });
+        if (blob.size === 0) {
+          setError("Recording was empty. Please try again.");
+          return;
+        }
+        await saveRecording(blob, elapsedRef.current);
         combinedStream.getTracks().forEach((t) => t.stop());
         micStream?.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
       };
 
-      recorder.start(1000); // collect data every 1s
+      recorder.start(500);
       setRecording(true);
       setElapsed(0);
       setError(null);
-      timerRef.current = setInterval(() => setElapsed((s) => s + 1), 1000);
+      timerRef.current = setInterval(() => {
+        elapsedRef.current += 1;
+        setElapsed(elapsedRef.current);
+      }, 1000);
 
-      // If user stops via browser UI
       screenStream.getVideoTracks()[0].onended = () => {
         if (recorderRef.current?.state === "recording") {
           recorderRef.current.stop();
@@ -110,7 +113,7 @@ export default function Recorder({ teamId, projectId, whiteboardId, onRecordingS
     if (timerRef.current) clearInterval(timerRef.current);
   };
 
-  async function saveRecording(blob: Blob) {
+  async function saveRecording(blob: Blob, durationSeconds: number) {
     setSaving(true);
     const ext = blob.type.includes("mp4") ? "mp4" : "webm";
     const name = `recording-${new Date().toISOString().replace(/[:.]/g, "-")}.${ext}`;
@@ -131,12 +134,12 @@ export default function Recorder({ teamId, projectId, whiteboardId, onRecordingS
       project_id: projectId || null,
       whiteboard_id: whiteboardId || null,
       name: name,
-      duration_seconds: elapsed,
+      duration_seconds: durationSeconds,
       storage_path: path,
     });
 
     if (dbError) {
-      setError("Recording saved to storage but failed to add record: " + dbError.message);
+      setError("Recording saved but failed to add record: " + dbError.message);
     } else {
       onRecordingSaved?.();
     }
