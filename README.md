@@ -12,7 +12,8 @@ Built with Next.js, Tailwind CSS, Supabase (Postgres, Auth, Realtime) and dnd-ki
 - To-do list view: quick add, tick to complete, show/hide completed
 - Kanban view: drag and drop between columns, add/rename/delete columns
 - Task details: description, assignee, due date (overdue highlighted), priority
-- Realtime: changes from teammates appear without refreshing
+- Realtime: task and column changes from teammates appear instantly
+- Live collaboration: see who is online, teammates' cursors, and which card someone is dragging
 - Row Level Security: users only see their own teams' data
 
 ## Setup

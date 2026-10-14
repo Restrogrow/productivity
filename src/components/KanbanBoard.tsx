@@ -17,6 +17,7 @@ import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } 
 import { CSS } from "@dnd-kit/utilities";
 import { positionBetween } from "@/lib/position";
 import type { Column, Task, TeamMember } from "@/lib/types";
+import type { Collaborator } from "@/lib/useCollaboration";
 import { Avatar, DueDate, PriorityBadge } from "./TaskMeta";
 
 type Props = {
@@ -29,10 +30,12 @@ type Props = {
   onAddColumn: (name: string) => void;
   onRenameColumn: (columnId: string, name: string) => void;
   onDeleteColumn: (columnId: string) => void;
+  remoteDragging: Record<string, Collaborator>;
+  onDragStateChange: (taskId: string | null) => void;
 };
 
 export default function KanbanBoard(props: Props) {
-  const { columns, tasks, members, onUpdate, onAddColumn } = props;
+  const { columns, tasks, members, onUpdate, onAddColumn, onDragStateChange } = props;
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [overColumnId, setOverColumnId] = useState<string | null>(null);
   const [newColumn, setNewColumn] = useState("");
@@ -45,6 +48,7 @@ export default function KanbanBoard(props: Props) {
 
   function handleDragStart(e: DragStartEvent) {
     setActiveTask(tasks.find((t) => t.id === e.active.id) ?? null);
+    onDragStateChange(String(e.active.id));
   }
 
   function handleDragOver(e: DragOverEvent) {
@@ -54,6 +58,7 @@ export default function KanbanBoard(props: Props) {
   function handleDragEnd(e: DragEndEvent) {
     setActiveTask(null);
     setOverColumnId(null);
+    onDragStateChange(null);
     const { active, over } = e;
     if (!over) return;
 
@@ -89,6 +94,7 @@ export default function KanbanBoard(props: Props) {
       onDragCancel={() => {
         setActiveTask(null);
         setOverColumnId(null);
+        onDragStateChange(null);
       }}
     >
       <div className="flex items-start gap-4 overflow-x-auto pb-4">
@@ -134,6 +140,7 @@ function KanbanColumn({
   onOpen,
   onRenameColumn,
   onDeleteColumn,
+  remoteDragging,
 }: Props & { column: Column; tasks: Task[]; highlighted: boolean }) {
   const { setNodeRef } = useDroppable({ id: `column-${column.id}`, data: { type: "column", columnId: column.id } });
   const [adding, setAdding] = useState(false);
@@ -167,7 +174,13 @@ function KanbanColumn({
       <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
         <div className="flex min-h-10 flex-col gap-2">
           {tasks.map((task) => (
-            <SortableTask key={task.id} task={task} members={members} onOpen={onOpen} />
+            <SortableTask
+              key={task.id}
+              task={task}
+              members={members}
+              onOpen={onOpen}
+              movedBy={remoteDragging[task.id]}
+            />
           ))}
         </div>
       </SortableContext>
@@ -202,7 +215,17 @@ function KanbanColumn({
   );
 }
 
-function SortableTask({ task, members, onOpen }: { task: Task; members: TeamMember[]; onOpen: (t: Task) => void }) {
+function SortableTask({
+  task,
+  members,
+  onOpen,
+  movedBy,
+}: {
+  task: Task;
+  members: TeamMember[];
+  onOpen: (t: Task) => void;
+  movedBy?: Collaborator;
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id,
     data: { type: "task", columnId: task.column_id },
@@ -217,16 +240,35 @@ function SortableTask({ task, members, onOpen }: { task: Task; members: TeamMemb
       {...attributes}
       {...listeners}
     >
-      <TaskCard task={task} members={members} />
+      <TaskCard task={task} members={members} movedBy={movedBy} />
     </div>
   );
 }
 
-function TaskCard({ task, members, dragging }: { task: Task; members: TeamMember[]; dragging?: boolean }) {
+function TaskCard({
+  task,
+  members,
+  dragging,
+  movedBy,
+}: {
+  task: Task;
+  members: TeamMember[];
+  dragging?: boolean;
+  movedBy?: Collaborator;
+}) {
   return (
     <div
-      className={`cursor-grab rounded-lg border border-slate-200 bg-white p-3 shadow-sm hover:border-indigo-300 ${dragging ? "rotate-2 shadow-lg" : ""}`}
+      className={`relative cursor-grab rounded-lg border border-slate-200 bg-white p-3 shadow-sm hover:border-indigo-300 ${dragging ? "rotate-2 shadow-lg" : ""} ${movedBy ? "animate-pulse" : ""}`}
+      style={movedBy ? { boxShadow: `0 0 0 2px ${movedBy.color}` } : undefined}
     >
+      {movedBy && (
+        <span
+          className="absolute -top-2.5 right-2 rounded px-1.5 text-[10px] font-medium text-white"
+          style={{ backgroundColor: movedBy.color }}
+        >
+          {movedBy.name} is moving
+        </span>
+      )}
       <p className="text-sm">{task.title}</p>
       <div className="mt-2 flex items-center gap-2">
         <PriorityBadge priority={task.priority} />

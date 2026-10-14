@@ -1,13 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import Header from "@/components/Header";
 import KanbanBoard from "@/components/KanbanBoard";
+import { Cursors, OnlineAvatars } from "@/components/Presence";
 import TaskList from "@/components/TaskList";
 import TaskModal from "@/components/TaskModal";
 import { supabase } from "@/lib/supabase";
+import { useCollaboration } from "@/lib/useCollaboration";
 import { useUser } from "@/lib/useUser";
 import type { Column, Project, Task, TeamMember } from "@/lib/types";
 
@@ -48,18 +50,63 @@ export default function ProjectView() {
     })();
   }, [user, id, loadColumns, loadTasks]);
 
-  // Live updates when teammates change tasks or columns.
+  const syncAll = useCallback(() => {
+    loadTasks();
+    loadColumns();
+  }, [loadTasks, loadColumns]);
+
+  const myName =
+    members.find((m) => m.user_id === user?.id)?.profiles?.full_name || user?.email?.split("@")[0] || "Someone";
+  const collab = useCollaboration(id, user?.id, myName, syncAll);
+  const { notifyChanged } = collab;
+  const mainRef = useRef<HTMLElement>(null);
+
+  // Live database changes from teammates, applied straight into state.
+  // Delete events only carry the row id, so they can't be filtered by project.
   useEffect(() => {
     if (!user) return;
+    const upsert = <T extends { id: string }>(list: T[], row: T) =>
+      list.some((r) => r.id === row.id) ? list.map((r) => (r.id === row.id ? row : r)) : [...list, row];
+
     const channel = supabase
       .channel(`project-${id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "tasks", filter: `project_id=eq.${id}` }, loadTasks)
-      .on("postgres_changes", { event: "*", schema: "public", table: "columns", filter: `project_id=eq.${id}` }, loadColumns)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "tasks", filter: `project_id=eq.${id}` },
+        ({ new: row }) => setTasks((prev) => upsert(prev, row as Task)),
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "tasks", filter: `project_id=eq.${id}` },
+        ({ new: row }) => setTasks((prev) => upsert(prev, row as Task)),
+      )
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "tasks" }, ({ old }) =>
+        setTasks((prev) => prev.filter((t) => t.id !== old.id)),
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "columns", filter: `project_id=eq.${id}` },
+        ({ new: row }) => setColumns((prev) => upsert(prev, row as Column).sort((a, b) => a.position - b.position)),
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "columns", filter: `project_id=eq.${id}` },
+        ({ new: row }) => setColumns((prev) => upsert(prev, row as Column).sort((a, b) => a.position - b.position)),
+      )
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "columns" }, ({ old }) => {
+        setColumns((prev) => prev.filter((c) => c.id !== old.id));
+        setTasks((prev) => prev.filter((t) => t.column_id !== old.id));
+      })
       .subscribe();
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user, id, loadTasks, loadColumns]);
+  }, [user, id]);
+
+  function trackCursor(e: React.PointerEvent) {
+    const rect = mainRef.current?.getBoundingClientRect();
+    if (rect) collab.sendCursor(e.clientX - rect.left, e.clientY - rect.top, view);
+  }
 
   async function updateTask(taskId: string, changes: Partial<Task>) {
     setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, ...changes } : t)));
@@ -67,7 +114,7 @@ export default function ProjectView() {
     if (error) {
       setError(error.message);
       loadTasks();
-    }
+    } else notifyChanged();
   }
 
   async function createTask(title: string, columnId: string) {
@@ -80,6 +127,7 @@ export default function ProjectView() {
       .single();
     if (error) return setError(error.message);
     setTasks((prev) => (prev.some((t) => t.id === data.id) ? prev : [...prev, data]));
+    notifyChanged();
   }
 
   async function deleteTask(taskId: string) {
@@ -88,7 +136,7 @@ export default function ProjectView() {
     if (error) {
       setError(error.message);
       loadTasks();
-    }
+    } else notifyChanged();
   }
 
   async function addColumn(name: string) {
@@ -96,17 +144,20 @@ export default function ProjectView() {
     const { error } = await supabase.from("columns").insert({ project_id: id, name, position });
     if (error) return setError(error.message);
     loadColumns();
+    notifyChanged();
   }
 
   async function renameColumn(columnId: string, name: string) {
     setColumns((prev) => prev.map((c) => (c.id === columnId ? { ...c, name } : c)));
     await supabase.from("columns").update({ name }).eq("id", columnId);
+    notifyChanged();
   }
 
   async function deleteColumn(columnId: string) {
     setColumns((prev) => prev.filter((c) => c.id !== columnId));
     setTasks((prev) => prev.filter((t) => t.column_id !== columnId));
     await supabase.from("columns").delete().eq("id", columnId);
+    notifyChanged();
   }
 
   if (!user) return null;
@@ -114,7 +165,13 @@ export default function ProjectView() {
   return (
     <>
       <Header email={user.email} />
-      <main className="mx-auto max-w-7xl px-4 py-6">
+      <main
+        ref={mainRef}
+        onPointerMove={trackCursor}
+        onPointerLeave={collab.hideCursor}
+        className="relative mx-auto min-h-[calc(100vh-3.5rem)] max-w-7xl px-4 py-6"
+      >
+        <Cursors cursors={collab.cursors} view={view} />
         {project && (
           <Link href={`/team/${project.team_id}`} className="text-sm text-slate-500 hover:text-slate-800">
             ← Back to team
@@ -125,6 +182,8 @@ export default function ProjectView() {
             <h1 className="text-2xl font-semibold">{project?.name ?? "…"}</h1>
             {project?.description && <p className="text-sm text-slate-500">{project.description}</p>}
           </div>
+          <div className="flex items-center gap-4">
+          <OnlineAvatars online={collab.online} myId={user.id} />
           <div className="flex rounded-lg border border-slate-200 bg-white p-1 text-sm">
             {(["list", "board"] as const).map((v) => (
               <button
@@ -135,6 +194,7 @@ export default function ProjectView() {
                 {v === "list" ? "To-do list" : "Kanban"}
               </button>
             ))}
+          </div>
           </div>
         </div>
         {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
@@ -160,6 +220,8 @@ export default function ProjectView() {
               onAddColumn={addColumn}
               onRenameColumn={renameColumn}
               onDeleteColumn={deleteColumn}
+              remoteDragging={collab.dragging}
+              onDragStateChange={collab.sendDrag}
             />
           )}
         </div>
