@@ -266,3 +266,44 @@ alter table public.whiteboards enable row level security;
 drop policy if exists "whiteboards_all" on public.whiteboards;
 create policy "whiteboards_all" on public.whiteboards for all to authenticated
   using (public.is_team_member(team_id)) with check (public.is_team_member(team_id));
+
+-- ---------- Recordings ----------
+create table if not exists public.recordings (
+  id uuid primary key default gen_random_uuid(),
+  team_id uuid not null references public.teams (id) on delete cascade,
+  project_id uuid references public.projects (id) on delete cascade,
+  whiteboard_id uuid references public.whiteboards (id) on delete cascade,
+  name text not null,
+  duration_seconds integer not null default 0,
+  storage_path text not null,
+  created_by uuid references public.profiles (id) on delete set null default auth.uid(),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists recordings_team_idx on public.recordings (team_id);
+create index if not exists recordings_project_idx on public.recordings (project_id);
+create index if not exists recordings_whiteboard_idx on public.recordings (whiteboard_id);
+
+alter table public.recordings enable row level security;
+
+drop policy if exists "recordings_select" on public.recordings;
+create policy "recordings_select" on public.recordings for select to authenticated
+  using (public.is_team_member(team_id));
+drop policy if exists "recordings_insert" on public.recordings;
+create policy "recordings_insert" on public.recordings for insert to authenticated
+  with check (public.is_team_member(team_id));
+drop policy if exists "recordings_delete" on public.recordings;
+create policy "recordings_delete" on public.recordings for delete to authenticated
+  using (public.is_team_member(team_id));
+
+-- ---------- Storage bucket for recordings ----------
+insert into storage.buckets (id, name, public)
+values ('recordings', 'recordings', false)
+on conflict (id) do nothing;
+
+drop policy if exists "recordings_storage_select" on storage.objects;
+create policy "recordings_storage_select" on storage.objects for select to authenticated
+  using (bucket_id = 'recordings' and public.is_team_member((select team_id from public.recordings where id::text = (storage.foldername(name))[1])));
+drop policy if exists "recordings_storage_insert" on storage.objects;
+create policy "recordings_storage_insert" on storage.objects for insert to authenticated
+  with check (bucket_id = 'recordings');

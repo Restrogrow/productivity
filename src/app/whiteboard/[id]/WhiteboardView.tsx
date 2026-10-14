@@ -7,6 +7,8 @@ import { supabase } from "@/lib/supabase";
 import { useUser } from "@/lib/useUser";
 import { useCollaboration } from "@/lib/useCollaboration";
 import { Cursors, OnlineAvatars } from "@/components/Presence";
+import ScreenShare from "@/components/ScreenShare";
+import Recorder from "@/components/Recorder";
 import type { Whiteboard } from "@/lib/types";
 
 type WBElement = {
@@ -51,6 +53,7 @@ export default function WhiteboardView() {
   const router = useRouter();
   const user = useUser();
   const [name, setName] = useState("Whiteboard");
+  const [teamId, setTeamId] = useState<string | null>(null);
   const [tool, setTool] = useState<string>("select");
   const [strokeColor, setStrokeColor] = useState("#0f172a");
   const [fillColor, setFillColor] = useState("#fef08a");
@@ -330,6 +333,7 @@ export default function WhiteboardView() {
       const { data, error } = await supabase.from("whiteboards").select("*").eq("id", id).single();
       if (error) return;
       setName(data.name);
+      setTeamId(data.team_id);
       setLastRemoteUpdate(data.updated_at);
       const els = (data.data && (data.data as any).elements) || [];
       elementsRef.current = els;
@@ -743,6 +747,12 @@ export default function WhiteboardView() {
             {[1, 2, 3, 5, 8, 12].map((w) => <option key={w} value={w}>{w}px</option>)}
           </select>
           <div className="ml-auto flex items-center gap-2">
+            {teamId && (
+              <>
+                <ScreenShare roomId={id} userId={user?.id || ""} userName={user?.email?.split("@")[0] || "Someone"} />
+                <Recorder teamId={teamId} whiteboardId={id} />
+              </>
+            )}
             <OnlineAvatars online={wbCollab.online} myId={user?.id} />
             <span className={`flex items-center gap-1 text-xs ${realtimeStatus === "live" ? "text-emerald-600" : realtimeStatus === "connecting" ? "text-amber-600" : "text-red-500"}`}>
               <span className={`h-1.5 w-1.5 rounded-full ${realtimeStatus === "live" ? "bg-emerald-500" : realtimeStatus === "connecting" ? "bg-amber-500 animate-pulse" : "bg-red-500"}`} />
