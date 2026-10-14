@@ -875,13 +875,18 @@ function RecordingItem({ rec, onDelete }: { rec: any; onDelete?: () => void }) {
   const [url, setUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
+  const [urlError, setUrlError] = useState(false);
 
   useEffect(() => {
     supabase.storage
       .from("recordings")
       .createSignedUrl(rec.storage_path, 3600)
-      .then(({ data }) => {
-        setUrl(data?.signedUrl ?? null);
+      .then(({ data, error }) => {
+        if (error || !data?.signedUrl) {
+          setUrlError(true);
+        } else {
+          setUrl(data.signedUrl);
+        }
         setLoading(false);
       });
   }, [rec.storage_path]);
@@ -917,8 +922,13 @@ function RecordingItem({ rec, onDelete }: { rec: any; onDelete?: () => void }) {
           </button>
         </div>
       </div>
-      {url && (
+      {url && !urlError && (
         <video src={url} controls className="aspect-video w-full bg-black" />
+      )}
+      {urlError && (
+        <div className="flex items-center justify-center bg-slate-900 py-8">
+          <p className="text-sm text-slate-400">Video preview unavailable. Use the download button to watch.</p>
+        </div>
       )}
     </div>
   );
