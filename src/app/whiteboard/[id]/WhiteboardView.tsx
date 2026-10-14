@@ -6,6 +6,7 @@ import Header from "@/components/Header";
 import { supabase } from "@/lib/supabase";
 import { useUser } from "@/lib/useUser";
 import { useCollaboration } from "@/lib/useCollaboration";
+import { createNotification } from "@/lib/useNotifications";
 import { Cursors, OnlineAvatars } from "@/components/Presence";
 import ScreenShare from "@/components/ScreenShare";
 import Recorder from "@/components/Recorder";
@@ -378,6 +379,48 @@ export default function WhiteboardView() {
   // presence + cursors for this whiteboard
   const wbCollab = useCollaboration(`wb-${id}`, user?.id, user?.email?.split("@")[0] || "Someone", () => {});
 
+  // notify teammates when screen share starts
+  const notifyScreenShare = useCallback(async () => {
+    if (!teamId || !user?.id) return;
+    const { data: teamMembers } = await supabase
+      .from("team_members")
+      .select("user_id")
+      .eq("team_id", teamId);
+    for (const m of teamMembers ?? []) {
+      if (m.user_id !== user.id) {
+        await createNotification(
+          m.user_id,
+          "screen_share",
+          `${user.email?.split("@")[0]} started screen sharing on "${name}"`,
+          `/whiteboard/${id}`,
+          user.id,
+        );
+      }
+    }
+  }, [teamId, user, name, id]);
+
+  // notify teammates when a recording is saved
+  const loadRecordingsRef = useRef<() => Promise<void>>(async () => {});
+  const handleRecordingSaved = useCallback(async () => {
+    await loadRecordingsRef.current();
+    if (!teamId || !user?.id) return;
+    const { data: teamMembers } = await supabase
+      .from("team_members")
+      .select("user_id")
+      .eq("team_id", teamId);
+    for (const m of teamMembers ?? []) {
+      if (m.user_id !== user.id) {
+        await createNotification(
+          m.user_id,
+          "recording",
+          `${user.email?.split("@")[0]} saved a recording on "${name}"`,
+          `/whiteboard/${id}`,
+          user.id,
+        );
+      }
+    }
+  }, [teamId, user, name, id]);
+
   // fetch recordings for this whiteboard
   const loadRecordings = useCallback(async () => {
     const { data } = await supabase
@@ -387,6 +430,8 @@ export default function WhiteboardView() {
       .order("created_at", { ascending: false });
     setRecordings(data ?? []);
   }, [id]);
+
+  loadRecordingsRef.current = loadRecordings;
 
   useEffect(() => {
     if (showRecordings) loadRecordings();
@@ -730,7 +775,7 @@ export default function WhiteboardView() {
 
   return (
     <div className="min-h-screen bg-slate-100">
-      <Header email={undefined} />
+      <Header email={user?.email} user={user} />
       <div className="flex h-[calc(100vh-4rem)] flex-col">
         {/* Toolbar */}
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white/80 px-3 py-2 backdrop-blur">
@@ -738,8 +783,8 @@ export default function WhiteboardView() {
           <input value={name} onChange={(e) => setName(e.target.value)} onBlur={async () => { await supabase.from("whiteboards").update({ name }).eq("id", id); }} className="input max-w-[240px] py-1.5" />
           {teamId && (
             <div className="flex items-center gap-1.5">
-              <ScreenShare roomId={id} userId={user?.id || ""} userName={user?.email?.split("@")[0] || "Someone"} />
-              <Recorder teamId={teamId} whiteboardId={id} onRecordingSaved={loadRecordings} />
+              <ScreenShare roomId={id} userId={user?.id || ""} userName={user?.email?.split("@")[0] || "Someone"} onShareStart={notifyScreenShare} />
+              <Recorder teamId={teamId} whiteboardId={id} onRecordingSaved={handleRecordingSaved} />
             </div>
           )}
           <div className="mx-2 h-6 w-px bg-slate-200" />

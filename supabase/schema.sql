@@ -310,3 +310,33 @@ create policy "recordings_storage_insert" on storage.objects for insert to authe
 drop policy if exists "recordings_storage_delete" on storage.objects;
 create policy "recordings_storage_delete" on storage.objects for delete to authenticated
   using (bucket_id = 'recordings');
+
+-- ---------- Notifications ----------
+create table if not exists public.notifications (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  type text not null check (type in ('task_assigned', 'task_completed', 'column_renamed', 'screen_share', 'recording', 'mention', 'project_created')),
+  message text not null,
+  link text,
+  read boolean not null default false,
+  created_by uuid references public.profiles (id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists notifications_user_idx on public.notifications (user_id);
+create index if not exists notifications_read_idx on public.notifications (user_id, read);
+
+alter table public.notifications enable row level security;
+
+drop policy if exists "notifications_select" on public.notifications;
+create policy "notifications_select" on public.notifications for select to authenticated
+  using (user_id = auth.uid());
+drop policy if exists "notifications_insert" on public.notifications;
+create policy "notifications_insert" on public.notifications for insert to authenticated
+  with check (user_id = auth.uid());
+drop policy if exists "notifications_update" on public.notifications;
+create policy "notifications_update" on public.notifications for update to authenticated
+  using (user_id = auth.uid());
+drop policy if exists "notifications_delete" on public.notifications;
+create policy "notifications_delete" on public.notifications for delete to authenticated
+  using (user_id = auth.uid());

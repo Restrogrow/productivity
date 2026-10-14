@@ -11,6 +11,7 @@ import TaskModal from "@/components/TaskModal";
 import { supabase } from "@/lib/supabase";
 import { useCollaboration } from "@/lib/useCollaboration";
 import { useUser } from "@/lib/useUser";
+import { createNotification } from "@/lib/useNotifications";
 import type { Column, Project, Task, TeamMember } from "@/lib/types";
 
 export default function ProjectView() {
@@ -116,7 +117,23 @@ export default function ProjectView() {
     if (error) {
       setError(error.message);
       loadTasks();
-    } else notifyChanged();
+    } else {
+      notifyChanged();
+      // Notify assignee if task was assigned
+      if (changes.assignee_id && changes.assignee_id !== user?.id) {
+        const task = tasks.find((t) => t.id === taskId);
+        const member = members.find((m) => m.user_id === changes.assignee_id);
+        if (task && member) {
+          await createNotification(
+            changes.assignee_id,
+            "task_assigned",
+            `${user?.email?.split("@")[0]} assigned you "${task.title}"`,
+            `/project/${id}`,
+            user?.id,
+          );
+        }
+      }
+    }
   }
 
   async function createTask(title: string, columnId: string) {
@@ -161,6 +178,18 @@ export default function ProjectView() {
     setColumns((prev) => prev.map((c) => (c.id === columnId ? { ...c, name } : c)));
     await supabase.from("columns").update({ name }).eq("id", columnId);
     notifyChanged();
+    // Notify all teammates
+    for (const m of members) {
+      if (m.user_id !== user?.id) {
+        await createNotification(
+          m.user_id,
+          "column_renamed",
+          `${user?.email?.split("@")[0]} renamed a column to "${name}"`,
+          `/project/${id}`,
+          user?.id,
+        );
+      }
+    }
   }
 
   async function deleteColumn(columnId: string) {
@@ -174,7 +203,7 @@ export default function ProjectView() {
 
   return (
     <>
-      <Header email={user.email} />
+      <Header email={user.email} user={user} />
       <main
         ref={mainRef}
         onPointerMove={trackCursor}

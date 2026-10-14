@@ -65,7 +65,7 @@ export default function WhiteboardListPage() {
 
   return (
     <>
-      <Header email={user.email} />
+      <Header email={user.email} user={user} />
       <main className="mx-auto max-w-7xl px-4 py-8 sm:py-10">
         <section className="relative overflow-hidden rounded-3xl border border-slate-200/70 bg-white/80 p-6 shadow-md sm:p-8">
           <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">

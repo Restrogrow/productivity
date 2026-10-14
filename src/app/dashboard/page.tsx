@@ -93,7 +93,7 @@ export default function DashboardPage() {
 
   return (
     <>
-      <Header email={user.email} />
+      <Header email={user.email} user={user} />
       <main className="mx-auto max-w-7xl px-4 py-8 sm:py-10">
         <section className="relative overflow-hidden rounded-3xl border border-slate-200/70 bg-white/80 p-6 shadow-md sm:p-8">
           <div className="absolute -right-24 -top-24 h-56 w-56 rounded-full bg-indigo-200/30 blur-3xl" />

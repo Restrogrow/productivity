@@ -7,6 +7,7 @@ type Props = {
   roomId: string;
   userId: string;
   userName: string;
+  onShareStart?: () => void;
 };
 
 type Peer = {
@@ -19,7 +20,7 @@ const RTC_CONFIG: RTCConfiguration = {
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
 };
 
-export default function ScreenShare({ roomId, userId, userName }: Props) {
+export default function ScreenShare({ roomId, userId, userName, onShareStart }: Props) {
   const [sharing, setSharing] = useState(false);
   const [peers, setPeers] = useState<Peer[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -160,6 +161,7 @@ export default function ScreenShare({ roomId, userId, userName }: Props) {
       localStreamRef.current = stream;
       setSharing(true);
       setError(null);
+      onShareStart?.();
 
       // If there are existing peers, add tracks to them
       pcsRef.current.forEach((pc) => {

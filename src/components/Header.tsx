@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import NotificationBell from "./NotificationBell";
+import type { User } from "@supabase/supabase-js";
 
-export default function Header({ email }: { email?: string | null }) {
+export default function Header({ email, user }: { email?: string | null; user?: User | null | undefined }) {
   const router = useRouter();
 
   async function signOut() {
@@ -32,6 +34,7 @@ export default function Header({ email }: { email?: string | null }) {
           </nav>
         </div>
         <div className="flex items-center gap-3">
+          <NotificationBell user={user ?? null} />
           {email && (
             <span className="hidden rounded-full bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-600 sm:inline">
               {email}
