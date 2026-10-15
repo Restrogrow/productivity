@@ -26,6 +26,7 @@ export default function ScreenShare({ roomId, userId, userName, onShareStart, va
   const panel = variant === "panel";
   const [sharing, setSharing] = useState(false);
   const [peers, setPeers] = useState<Peer[]>([]);
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -68,7 +69,11 @@ export default function ScreenShare({ roomId, userId, userName, onShareStart, va
       };
 
       pc.onconnectionstatechange = () => {
-        if (pc.connectionState === "disconnected" || pc.connectionState === "failed") {
+        if (
+          pc.connectionState === "disconnected" ||
+          pc.connectionState === "failed" ||
+          pc.connectionState === "closed"
+        ) {
           pcsRef.current.delete(peerId);
           setPeers((prev) => prev.filter((p) => p.userId !== peerId));
         }
@@ -81,22 +86,35 @@ export default function ScreenShare({ roomId, userId, userName, onShareStart, va
 
   // Setup signaling channel
   useEffect(() => {
+    const pcs = pcsRef.current;
     const channel = supabase.channel(`screenshare-${roomId}`, {
       config: { broadcast: { self: false } },
     });
 
     channel
       .on("broadcast", { event: "join" }, ({ payload }) => {
-        // Someone joined — if we're sharing, create an offer
-        if (localStreamRef.current && payload.from !== userId) {
-          const pc = createPeerConnection(payload.from, payload.name);
-          pc.createOffer().then((offer) => {
-            pc.setLocalDescription(offer);
-            channel.send({
-              type: "broadcast",
-              event: "offer",
-              payload: { target: payload.from, sdp: offer, from: userId, name: userName },
+        if (payload.from === userId) return;
+        // If we're sharing, offer our stream to whoever joined (only once per peer).
+        if (localStreamRef.current) {
+          if (!pcsRef.current.has(payload.from)) {
+            const pc = createPeerConnection(payload.from, payload.name);
+            pc.createOffer().then((offer) => {
+              pc.setLocalDescription(offer);
+              channel.send({
+                type: "broadcast",
+                event: "offer",
+                payload: { target: payload.from, sdp: offer, from: userId, name: userName },
+              });
             });
+          }
+        } else if (!payload.reply && !pcsRef.current.has(payload.from)) {
+          // Viewer answering a join so any sharer in the room learns we're here
+          // and starts the WebRTC handshake on their side. Replies are not
+          // re-replied to, so this terminates.
+          channel.send({
+            type: "broadcast",
+            event: "join",
+            payload: { from: userId, name: userName, reply: true },
           });
         }
       })
@@ -132,16 +150,19 @@ export default function ScreenShare({ roomId, userId, userName, onShareStart, va
         }
         setPeers((prev) => prev.filter((p) => p.userId !== payload.from));
       })
-      .subscribe();
+      .subscribe((status) => {
+        // Announce join only once the channel has actually joined — messages
+        // sent before SUBSCRIBED can be silently dropped.
+        if (status === "SUBSCRIBED") {
+          channel.send({
+            type: "broadcast",
+            event: "join",
+            payload: { from: userId, name: userName },
+          });
+        }
+      });
 
     channelRef.current = channel;
-
-    // Announce join
-    channel.send({
-      type: "broadcast",
-      event: "join",
-      payload: { from: userId, name: userName },
-    });
 
     return () => {
       channel.send({
@@ -150,8 +171,8 @@ export default function ScreenShare({ roomId, userId, userName, onShareStart, va
         payload: { from: userId },
       });
       supabase.removeChannel(channel);
-      pcsRef.current.forEach((pc) => pc.close());
-      pcsRef.current.clear();
+      pcs.forEach((pc) => pc.close());
+      pcs.clear();
     };
   }, [roomId, userId, userName, createPeerConnection]);
 
@@ -162,6 +183,7 @@ export default function ScreenShare({ roomId, userId, userName, onShareStart, va
         audio: true,
       });
       localStreamRef.current = stream;
+      setLocalStream(stream);
       setSharing(true);
       setError(null);
       onShareStart?.();
@@ -182,19 +204,26 @@ export default function ScreenShare({ roomId, userId, userName, onShareStart, va
       stream.getVideoTracks()[0].onended = () => {
         stopSharing();
       };
-    } catch (err: any) {
-      if (err.name !== "NotAllowedError") {
+    } catch (err) {
+      if (err instanceof Error && err.name !== "NotAllowedError") {
         setError("Could not start screen share. Please allow screen capture.");
       }
     }
   };
 
   const stopSharing = () => {
+    // Tell viewers we're gone so they clean up their video feeds right away
+    channelRef.current?.send({
+      type: "broadcast",
+      event: "leave",
+      payload: { from: userId },
+    });
     localStreamRef.current?.getTracks().forEach((t) => t.stop());
     localStreamRef.current = null;
     pcsRef.current.forEach((pc) => pc.close());
     pcsRef.current.clear();
     setPeers([]);
+    setLocalStream(null);
     setSharing(false);
   };
 
@@ -235,13 +264,24 @@ export default function ScreenShare({ roomId, userId, userName, onShareStart, va
 
       {error && <p className={`text-red-600 ${panel ? "text-sm" : "text-xs"}`}>{error}</p>}
 
+      {/* Local preview so the sharer can see what they're streaming */}
+      {panel && sharing && localStream && (
+        <div className="flex w-full flex-col gap-3">
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
+            Your stream
+          </h3>
+          <LocalPreview stream={localStream} />
+        </div>
+      )}
+
       {/* Remote screen feeds */}
       {peers.length > 0 && (
         <div className="flex w-full flex-col gap-3">
           {panel && (
             <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-700">
               <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
-              Live streams
+              Live streams ({peers.length})
             </h3>
           )}
           <div className={panel ? "grid gap-4 sm:grid-cols-2" : "flex flex-col gap-2"}>
@@ -251,6 +291,33 @@ export default function ScreenShare({ roomId, userId, userName, onShareStart, va
           </div>
         </div>
       )}
+
+      {panel && !sharing && peers.length === 0 && (
+        <p className="text-sm text-slate-400">
+          No one is streaming right now — click “Share Screen” to start.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function LocalPreview({ stream }: { stream: MediaStream }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    if (videoRef.current && stream) {
+      videoRef.current.srcObject = stream;
+    }
+  }, [stream]);
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-black shadow">
+      <div className="flex items-center gap-2 bg-indigo-600 px-3 py-1.5">
+        <span className="h-2 w-2 animate-pulse rounded-full bg-white" />
+        <span className="text-xs font-medium text-white">You are sharing</span>
+      </div>
+      {/* muted to avoid audio echo against the captured screen audio */}
+      <video ref={videoRef} autoPlay playsInline muted className="aspect-video w-full object-contain" />
     </div>
   );
 }

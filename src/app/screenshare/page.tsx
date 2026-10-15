@@ -10,6 +10,9 @@ import type { Team } from "@/lib/types";
 
 export default function ScreenSharePage() {
   const user = useUser();
+  // Unique identity per tab/window so the same user can open share in one
+  // window and watch in another.
+  const [tabSuffix] = useState(() => Math.random().toString(36).slice(2));
   const [team, setTeam] = useState<Team | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -98,7 +101,7 @@ export default function ScreenSharePage() {
                 <ScreenShare
                   variant="panel"
                   roomId={team.id}
-                  userId={user.id}
+                  userId={user ? `${user.id}-${tabSuffix}` : ""}
                   userName={user.email?.split("@")[0] || "Someone"}
                   onShareStart={notifyScreenShare}
                 />
