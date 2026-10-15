@@ -371,23 +371,38 @@ function LocalPreview({ stream }: { stream: MediaStream }) {
 
 function RemoteVideo({ peer }: { peer: Peer }) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  // Browsers block autoplay for unmuted video without a user gesture — a guest
+  // landing directly on a watch link has none, so the video stays paused on a
+  // black first frame. Start muted (autoplay always allowed) and unmute via a
+  // user gesture.
+  const [muted, setMuted] = useState(true);
 
   useEffect(() => {
-    if (videoRef.current && peer.stream) {
-      videoRef.current.srcObject = peer.stream;
+    const video = videoRef.current;
+    if (video && peer.stream) {
+      video.srcObject = peer.stream;
+      video.play().catch(() => {});
     }
   }, [peer.stream]);
 
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-200 bg-black shadow">
+    <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-black shadow">
       <div className="flex items-center gap-2 bg-slate-800 px-3 py-1.5">
         <span className="h-2 w-2 rounded-full bg-red-500" />
         <span className="text-xs font-medium text-white">{peer.name}&apos;s screen</span>
+        <button
+          onClick={() => setMuted((m) => !m)}
+          className="ml-auto rounded-md px-1.5 py-0.5 text-xs text-white/80 transition hover:bg-white/10 hover:text-white"
+          title={muted ? "Unmute stream audio" : "Mute stream audio"}
+        >
+          {muted ? "🔇 Muted" : "🔊"}
+        </button>
       </div>
       <video
         ref={videoRef}
         autoPlay
         playsInline
+        muted={muted}
         className="aspect-video w-full object-contain"
       />
     </div>
