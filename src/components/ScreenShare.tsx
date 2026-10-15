@@ -8,6 +8,8 @@ type Props = {
   userId: string;
   userName: string;
   onShareStart?: () => void;
+  /** "toolbar" fits inside the old whiteboard toolbar; "panel" is the bigger standalone-page UI. */
+  variant?: "toolbar" | "panel";
 };
 
 type Peer = {
@@ -20,7 +22,8 @@ const RTC_CONFIG: RTCConfiguration = {
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
 };
 
-export default function ScreenShare({ roomId, userId, userName, onShareStart }: Props) {
+export default function ScreenShare({ roomId, userId, userName, onShareStart, variant = "toolbar" }: Props) {
+  const panel = variant === "panel";
   const [sharing, setSharing] = useState(false);
   const [peers, setPeers] = useState<Peer[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -201,7 +204,11 @@ export default function ScreenShare({ roomId, userId, userName, onShareStart }: 
         {!sharing ? (
           <button
             onClick={startSharing}
-            className="btn-secondary flex items-center gap-1.5 px-3 py-1.5 text-sm"
+            className={`flex items-center gap-1.5 ${
+              panel
+                ? "btn-primary px-5 py-3 text-base"
+                : "btn-secondary px-3 py-1.5 text-sm"
+            }`}
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
@@ -211,27 +218,37 @@ export default function ScreenShare({ roomId, userId, userName, onShareStart }: 
         ) : (
           <button
             onClick={stopSharing}
-            className="flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white shadow hover:bg-red-700"
+            className={`flex items-center gap-1.5 rounded-lg bg-red-600 font-medium text-white shadow hover:bg-red-700 ${
+              panel ? "px-5 py-3 text-base" : "px-3 py-1.5 text-sm"
+            }`}
           >
             <span className="h-2 w-2 animate-pulse rounded-full bg-white" />
             Stop Sharing
           </button>
         )}
         {sharing && (
-          <span className="text-xs text-slate-500">
+          <span className={`text-slate-500 ${panel ? "text-sm" : "text-xs"}`}>
             {peers.length > 0 ? `${peers.length} watching` : "Waiting for viewers..."}
           </span>
         )}
       </div>
 
-      {error && <p className="text-xs text-red-600">{error}</p>}
+      {error && <p className={`text-red-600 ${panel ? "text-sm" : "text-xs"}`}>{error}</p>}
 
       {/* Remote screen feeds */}
       {peers.length > 0 && (
-        <div className="flex flex-col gap-2">
-          {peers.map((peer) => (
-            <RemoteVideo key={peer.userId} peer={peer} />
-          ))}
+        <div className="flex w-full flex-col gap-3">
+          {panel && (
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
+              Live streams
+            </h3>
+          )}
+          <div className={panel ? "grid gap-4 sm:grid-cols-2" : "flex flex-col gap-2"}>
+            {peers.map((peer) => (
+              <RemoteVideo key={peer.userId} peer={peer} />
+            ))}
+          </div>
         </div>
       )}
     </div>

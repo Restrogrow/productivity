@@ -8,7 +8,6 @@ import { useUser } from "@/lib/useUser";
 import { useCollaboration } from "@/lib/useCollaboration";
 import { createNotification } from "@/lib/useNotifications";
 import { Cursors, OnlineAvatars } from "@/components/Presence";
-import ScreenShare from "@/components/ScreenShare";
 import Recorder from "@/components/Recorder";
 import type { Whiteboard } from "@/lib/types";
 
@@ -378,26 +377,6 @@ export default function WhiteboardView() {
 
   // presence + cursors for this whiteboard
   const wbCollab = useCollaboration(`wb-${id}`, user?.id, user?.email?.split("@")[0] || "Someone", () => {});
-
-  // notify teammates when screen share starts
-  const notifyScreenShare = useCallback(async () => {
-    if (!teamId || !user?.id) return;
-    const { data: teamMembers } = await supabase
-      .from("team_members")
-      .select("user_id")
-      .eq("team_id", teamId);
-    for (const m of teamMembers ?? []) {
-      if (m.user_id !== user.id) {
-        await createNotification(
-          m.user_id,
-          "screen_share",
-          `${user.email?.split("@")[0]} started screen sharing on "${name}"`,
-          `/whiteboard/${id}`,
-          user.id,
-        );
-      }
-    }
-  }, [teamId, user, name, id]);
 
   // notify teammates when a recording is saved
   const loadRecordingsRef = useRef<() => Promise<void>>(async () => {});
@@ -783,7 +762,6 @@ export default function WhiteboardView() {
           <input value={name} onChange={(e) => setName(e.target.value)} onBlur={async () => { await supabase.from("whiteboards").update({ name }).eq("id", id); }} className="input max-w-[240px] py-1.5" />
           {teamId && (
             <div className="flex items-center gap-1.5">
-              <ScreenShare roomId={id} userId={user?.id || ""} userName={user?.email?.split("@")[0] || "Someone"} onShareStart={notifyScreenShare} />
               <Recorder teamId={teamId} whiteboardId={id} onRecordingSaved={handleRecordingSaved} />
             </div>
           )}

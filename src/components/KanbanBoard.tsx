@@ -97,17 +97,18 @@ export default function KanbanBoard(props: Props) {
         onDragStateChange(null);
       }}
     >
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Columns sized as a % of board width, so at <= 4 columns this looks exactly like the old 2/4-up grid; extra columns scroll sideways instead of wrapping or overflowing. */}
+      <div className="flex w-full gap-4 overflow-x-auto pb-2">
         {columns.map((column) => (
-          <KanbanColumn
-            key={column.id}
-            {...props}
-            column={column}
-            tasks={tasksIn(column.id)}
-            highlighted={overColumnId === column.id && activeTask?.column_id !== column.id}
-          />
+          <div key={column.id} className="w-full shrink-0 sm:w-[calc(50%-0.5rem)] lg:w-[calc(25%-0.75rem)]">
+            <KanbanColumn
+              {...props}
+              column={column}
+              tasks={tasksIn(column.id)}
+              highlighted={overColumnId === column.id && activeTask?.column_id !== column.id}
+            />
+          </div>
         ))}
-
       </div>
 
       <DragOverlay>{activeTask && <TaskCard task={activeTask} members={members} dragging />}</DragOverlay>
