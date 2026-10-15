@@ -225,6 +225,24 @@ create policy "tasks_all" on public.tasks for all to authenticated
   using (public.is_team_member(public.project_team(project_id)))
   with check (public.is_team_member(public.project_team(project_id)));
 
+-- ---------- EOD Updates ----------
+create table if not exists public.eod_updates (
+  id uuid primary key default gen_random_uuid(),
+  team_id uuid not null references public.teams (id) on delete cascade,
+  content text not null,
+  update_date date not null default current_date,
+  created_by uuid references public.profiles (id) on delete set null default auth.uid(),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists eod_updates_team_idx on public.eod_updates (team_id);
+
+alter table public.eod_updates enable row level security;
+
+drop policy if exists "eod_updates_all" on public.eod_updates;
+create policy "eod_updates_all" on public.eod_updates for all to authenticated
+  using (public.is_team_member(team_id)) with check (public.is_team_member(team_id));
+
 -- ---------- Realtime ----------
 
 do $$
@@ -241,8 +259,12 @@ begin
   if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'whiteboards') then
     alter publication supabase_realtime add table public.whiteboards;
   end if;
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'eod_updates') then
+    alter publication supabase_realtime add table public.eod_updates;
+  end if;
 end;
 $$;
+
 -- ---------- Whiteboards ----------
 create table if not exists public.whiteboards (
   id uuid primary key default gen_random_uuid(),

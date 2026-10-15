@@ -42,6 +42,16 @@ export type Column = {
 
 export type Priority = "low" | "medium" | "high";
 
+export type EodUpdate = {
+  id: string;
+  team_id: string;
+  content: string;
+  update_date: string; // YYYY-MM-DD
+  created_by: string | null;
+  profiles: Profile | null;
+  created_at: string;
+};
+
 export type Task = {
   id: string;
   project_id: string;

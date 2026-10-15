@@ -34,6 +34,9 @@ export default function Header({ email, user }: { email?: string | null; user?: 
             <Link href="/screenshare" className="rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900">
               Screen Share
             </Link>
+            <Link href="/updates" className="rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900">
+              EOD Updates
+            </Link>
           </nav>
         </div>
         <div className="flex items-center gap-3">
