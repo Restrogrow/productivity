@@ -32,6 +32,9 @@ export default function ScreenShare({ roomId, userId, userName, onShareStart, va
   const localStreamRef = useRef<MediaStream | null>(null);
   const pcsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  // Unique per mount (tab/window) identity so the same user can share and
+  // watch across two windows without the signaling confusing them.
+  const selfIdRef = useRef<string>("");
 
   const createPeerConnection = useCallback(
     (peerId: string, peerName: string) => {
@@ -52,7 +55,7 @@ export default function ScreenShare({ roomId, userId, userName, onShareStart, va
           channelRef.current?.send({
             type: "broadcast",
             event: "ice",
-            payload: { target: peerId, candidate: e.candidate, from: userId },
+            payload: { target: peerId, candidate: e.candidate, from: selfIdRef.current },
           });
         }
       };
@@ -81,19 +84,25 @@ export default function ScreenShare({ roomId, userId, userName, onShareStart, va
 
       return pc;
     },
-    [userId],
+    [],
   );
 
   // Setup signaling channel
   useEffect(() => {
     const pcs = pcsRef.current;
+    // Generate the per-mount identity here (not during render) so the value is
+    // never evaluated in a static prerender.
+    if (!selfIdRef.current) {
+      selfIdRef.current = `${userId}:${Math.random().toString(36).slice(2)}`;
+    }
+    const selfId = selfIdRef.current;
     const channel = supabase.channel(`screenshare-${roomId}`, {
       config: { broadcast: { self: false } },
     });
 
     channel
       .on("broadcast", { event: "join" }, ({ payload }) => {
-        if (payload.from === userId) return;
+        if (payload.from === selfId) return;
         // If we're sharing, offer our stream to whoever joined (only once per peer).
         if (localStreamRef.current) {
           if (!pcsRef.current.has(payload.from)) {
@@ -103,7 +112,7 @@ export default function ScreenShare({ roomId, userId, userName, onShareStart, va
               channel.send({
                 type: "broadcast",
                 event: "offer",
-                payload: { target: payload.from, sdp: offer, from: userId, name: userName },
+                payload: { target: payload.from, sdp: offer, from: selfId, name: userName },
               });
             });
           }
@@ -114,12 +123,12 @@ export default function ScreenShare({ roomId, userId, userName, onShareStart, va
           channel.send({
             type: "broadcast",
             event: "join",
-            payload: { from: userId, name: userName, reply: true },
+            payload: { from: selfId, name: userName, reply: true },
           });
         }
       })
       .on("broadcast", { event: "offer" }, async ({ payload }) => {
-        if (payload.target !== userId) return;
+        if (payload.target !== selfId) return;
         const pc = createPeerConnection(payload.from, payload.name);
         await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
         const answer = await pc.createAnswer();
@@ -127,16 +136,16 @@ export default function ScreenShare({ roomId, userId, userName, onShareStart, va
         channel.send({
           type: "broadcast",
           event: "answer",
-          payload: { target: payload.from, sdp: answer, from: userId },
+          payload: { target: payload.from, sdp: answer, from: selfId },
         });
       })
       .on("broadcast", { event: "answer" }, async ({ payload }) => {
-        if (payload.target !== userId) return;
+        if (payload.target !== selfId) return;
         const pc = pcsRef.current.get(payload.from);
         if (pc) await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
       })
       .on("broadcast", { event: "ice" }, async ({ payload }) => {
-        if (payload.target !== userId) return;
+        if (payload.target !== selfId) return;
         const pc = pcsRef.current.get(payload.from);
         if (pc && payload.candidate) {
           await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
@@ -157,7 +166,7 @@ export default function ScreenShare({ roomId, userId, userName, onShareStart, va
           channel.send({
             type: "broadcast",
             event: "join",
-            payload: { from: userId, name: userName },
+            payload: { from: selfId, name: userName },
           });
         }
       });
@@ -168,7 +177,7 @@ export default function ScreenShare({ roomId, userId, userName, onShareStart, va
       channel.send({
         type: "broadcast",
         event: "leave",
-        payload: { from: userId },
+        payload: { from: selfIdRef.current },
       });
       supabase.removeChannel(channel);
       pcs.forEach((pc) => pc.close());
@@ -197,7 +206,7 @@ export default function ScreenShare({ roomId, userId, userName, onShareStart, va
       channelRef.current?.send({
         type: "broadcast",
         event: "join",
-        payload: { from: userId, name: userName },
+        payload: { from: selfIdRef.current, name: userName },
       });
 
       // Handle user stopping via browser UI
@@ -216,7 +225,7 @@ export default function ScreenShare({ roomId, userId, userName, onShareStart, va
     channelRef.current?.send({
       type: "broadcast",
       event: "leave",
-      payload: { from: userId },
+      payload: { from: selfIdRef.current },
     });
     localStreamRef.current?.getTracks().forEach((t) => t.stop());
     localStreamRef.current = null;

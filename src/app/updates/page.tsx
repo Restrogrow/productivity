@@ -26,7 +26,8 @@ export default function EodUpdatesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [date, setDate] = useState(todayISO());
+  // Set client-side after mount — `new Date()` is unstable during prerender.
+  const [date, setDate] = useState("");
   const [content, setContent] = useState("");
   const [saving, setSaving] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -49,6 +50,7 @@ export default function EodUpdatesPage() {
     void (async () => {
       const { data: teams } = await supabase.from("teams").select("*").order("created_at");
       if (stale) return;
+      setDate(todayISO());
       const activeTeam = teams?.[0] ?? null;
       setTeam(activeTeam);
       if (activeTeam) {
@@ -136,7 +138,7 @@ export default function EodUpdatesPage() {
               <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="input py-2" />
             </label>
             <span className="hidden pb-2 text-xs text-slate-400 sm:block">
-              shown as “EOD Update – {formatDate(date)}”
+              shown as “EOD Update – {date ? formatDate(date) : "today"}”
             </span>
           </div>
           <textarea
