@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import Header from "@/components/Header";
+import ChatPanel from "@/components/ChatPanel";
 import KanbanBoard from "@/components/KanbanBoard";
 import { Cursors, OnlineAvatars } from "@/components/Presence";
 import TaskList from "@/components/TaskList";
@@ -298,6 +299,7 @@ export default function ProjectView() {
           )}
         </div>
       </main>
+      <ChatPanel room={`project-${id}`} teamId={project?.team_id ?? null} userId={user?.id} />
 
       {editing && (
         <TaskModal

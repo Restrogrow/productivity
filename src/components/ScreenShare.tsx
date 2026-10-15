@@ -5,8 +5,10 @@ import { supabase } from "@/lib/supabase";
 
 type Props = {
   roomId: string;
-  userId: string;
-  userName: string;
+  /** Optional — a guest (e.g. /watch page) without a signed-in user gets a
+   * per-mount identity generated internally. */
+  userId?: string;
+  userName?: string;
   onShareStart?: () => void;
   /** "toolbar" fits inside the old whiteboard toolbar; "panel" is the bigger standalone-page UI. */
   variant?: "toolbar" | "panel";
@@ -18,16 +20,34 @@ type Peer = {
   stream: MediaStream;
 };
 
+// STUN handles most connections; TURN relays media through a server when a
+// peer is behind a strict NAT/corporate firewall (STUN-only would fail there).
+// Defaults to the free Open Relay TURN; override with NEXT_PUBLIC_TURN_* env vars.
+const TURN_SERVERS: RTCIceServer[] = process.env.NEXT_PUBLIC_TURN_URL
+  ? [
+      {
+        urls: process.env.NEXT_PUBLIC_TURN_URL,
+        username: process.env.NEXT_PUBLIC_TURN_USERNAME,
+        credential: process.env.NEXT_PUBLIC_TURN_CREDENTIAL,
+      },
+    ]
+  : [
+      { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
+      { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
+      { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" },
+    ];
+
 const RTC_CONFIG: RTCConfiguration = {
-  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+  iceServers: [{ urls: "stun:stun.l.google.com:19302" }, ...TURN_SERVERS],
 };
 
-export default function ScreenShare({ roomId, userId, userName, onShareStart, variant = "toolbar" }: Props) {
+export default function ScreenShare({ roomId, userId = "guest", userName = "Guest", onShareStart, variant = "toolbar" }: Props) {
   const panel = variant === "panel";
   const [sharing, setSharing] = useState(false);
   const [peers, setPeers] = useState<Peer[]>([]);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   const localStreamRef = useRef<MediaStream | null>(null);
   const pcsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
@@ -220,6 +240,12 @@ export default function ScreenShare({ roomId, userId, userName, onShareStart, va
     }
   };
 
+  const copyWatchLink = async () => {
+    await navigator.clipboard.writeText(`${window.location.origin}/watch/${roomId}`);
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 2000);
+  };
+
   const stopSharing = () => {
     // Tell viewers we're gone so they clean up their video feeds right away
     channelRef.current?.send({
@@ -268,6 +294,18 @@ export default function ScreenShare({ roomId, userId, userName, onShareStart, va
           <span className={`text-slate-500 ${panel ? "text-sm" : "text-xs"}`}>
             {peers.length > 0 ? `${peers.length} watching` : "Waiting for viewers..."}
           </span>
+        )}
+        {panel && (
+          <button
+            onClick={copyWatchLink}
+            className="btn-secondary ml-auto flex items-center gap-1.5 px-3 py-1.5 text-sm"
+            title="Anyone with this link can watch the live stream without signing in"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 010 5.656l-3 3a4 4 0 01-5.656 0l-1.5-1.5m7.856-7.156l1.5 1.5m-4.243 2.5L15 11m-1.5-4.5L16.5 3.5a4 4 0 015.656 5.656L19 12" />
+            </svg>
+            {linkCopied ? "Link copied!" : "Copy watch link"}
+          </button>
         )}
       </div>
 

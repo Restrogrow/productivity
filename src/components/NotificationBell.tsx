@@ -11,6 +11,8 @@ const TYPE_ICONS: Record<string, string> = {
   column_renamed: "\u{1F4DD}",
   screen_share: "\u{1F4FA}",
   recording: "\u{1F3AC}",
+  eod_update: "\u{1F4DD}",
+  chat_message: "\u{1F4AC}",
   mention: "\u{1F4AC}",
   project_created: "\u{1F4C4}",
 };

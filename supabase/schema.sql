@@ -243,6 +243,68 @@ drop policy if exists "eod_updates_all" on public.eod_updates;
 create policy "eod_updates_all" on public.eod_updates for all to authenticated
   using (public.is_team_member(team_id)) with check (public.is_team_member(team_id));
 
+-- ---------- Chat messages ----------
+create table if not exists public.chat_messages (
+  id uuid primary key default gen_random_uuid(),
+  team_id uuid not null references public.teams (id) on delete cascade,
+  room text not null,
+  content text not null,
+  created_by uuid references public.profiles (id) on delete set null default auth.uid(),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists chat_messages_room_idx on public.chat_messages (room);
+create index if not exists chat_messages_team_idx on public.chat_messages (team_id);
+
+alter table public.chat_messages enable row level security;
+
+drop policy if exists "chat_messages_all" on public.chat_messages;
+create policy "chat_messages_all" on public.chat_messages for all to authenticated
+  using (public.is_team_member(team_id)) with check (public.is_team_member(team_id));
+
+-- ---------- Team invites ----------
+create table if not exists public.team_invites (
+  id uuid primary key default gen_random_uuid(),
+  team_id uuid not null references public.teams (id) on delete cascade,
+  token text not null unique,
+  created_by uuid references public.profiles (id) on delete set null default auth.uid(),
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null default (now() + interval '7 days')
+);
+
+create index if not exists team_invites_team_idx on public.team_invites (team_id);
+
+alter table public.team_invites enable row level security;
+
+drop policy if exists "team_invites_select" on public.team_invites;
+create policy "team_invites_select" on public.team_invites for select to authenticated
+  using (public.is_team_member(team_id));
+drop policy if exists "team_invites_insert" on public.team_invites;
+create policy "team_invites_insert" on public.team_invites for insert to authenticated
+  with check (public.is_team_member(team_id));
+
+-- Join a team by invite token. Security definer so a signed-up user can be
+-- matched to the invite and added as a member in one atomic call.
+create or replace function public.join_team_by_token(invite_token text)
+returns public.teams language plpgsql security definer set search_path = public as $$
+declare
+  inv team_invites;
+  t teams;
+begin
+  if auth.uid() is null then
+    raise exception 'Not signed in';
+  end if;
+  select * into inv from team_invites where token = invite_token and expires_at > now() limit 1;
+  if not found then
+    raise exception 'Invite link is invalid or expired';
+  end if;
+  insert into team_members (team_id, user_id, role) values (inv.team_id, auth.uid(), 'member')
+    on conflict do nothing;
+  select * into t from teams where id = inv.team_id;
+  return t;
+end;
+$$;
+
 -- ---------- Realtime ----------
 
 do $$
@@ -261,6 +323,9 @@ begin
   end if;
   if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'eod_updates') then
     alter publication supabase_realtime add table public.eod_updates;
+  end if;
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'chat_messages') then
+    alter publication supabase_realtime add table public.chat_messages;
   end if;
 end;
 $$;
@@ -337,7 +402,7 @@ create policy "recordings_storage_delete" on storage.objects for delete to authe
 create table if not exists public.notifications (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles (id) on delete cascade,
-  type text not null check (type in ('task_assigned', 'task_completed', 'column_renamed', 'screen_share', 'recording', 'mention', 'project_created')),
+  type text not null check (type in ('task_assigned', 'task_completed', 'column_renamed', 'screen_share', 'recording', 'mention', 'project_created', 'eod_update', 'chat_message')),
   message text not null,
   link text,
   read boolean not null default false,

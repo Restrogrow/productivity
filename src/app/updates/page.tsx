@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Header from "@/components/Header";
 import { supabase } from "@/lib/supabase";
 import { useUser } from "@/lib/useUser";
+import { createNotification } from "@/lib/useNotifications";
 import type { EodUpdate, Team } from "@/lib/types";
 
 function todayISO() {
@@ -103,7 +104,26 @@ export default function EodUpdatesPage() {
     }
     setContent("");
     setDate(todayISO());
-    if (team) await loadUpdates(team.id);
+
+    // Notify teammates so they come read it
+    if (team) {
+      const { data: teamMembers } = await supabase
+        .from("team_members")
+        .select("user_id")
+        .eq("team_id", team.id);
+      for (const m of teamMembers ?? []) {
+        if (m.user_id !== user.id) {
+          await createNotification(
+            m.user_id,
+            "eod_update",
+            `${user.email?.split("@")[0]} posted an EOD update`,
+            `/updates`,
+            user.id,
+          );
+        }
+      }
+      await loadUpdates(team.id);
+    }
   }
 
   async function deleteUpdate(id: string) {

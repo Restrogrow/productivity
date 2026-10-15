@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Header from "@/components/Header";
+import ChatPanel from "@/components/ChatPanel";
 import { supabase } from "@/lib/supabase";
 import { useUser } from "@/lib/useUser";
 import { useCollaboration } from "@/lib/useCollaboration";
@@ -755,6 +756,7 @@ export default function WhiteboardView() {
   return (
     <div className="min-h-screen bg-slate-100">
       <Header email={user?.email} user={user} />
+      <ChatPanel room={`wb-${id}`} teamId={teamId} userId={user?.id} />
       <div className="flex h-[calc(100vh-4rem)] flex-col">
         {/* Toolbar */}
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white/80 px-3 py-2 backdrop-blur">
