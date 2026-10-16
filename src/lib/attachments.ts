@@ -27,8 +27,8 @@ export async function uploadAttachment(
   return { path };
 }
 
-export async function signedUrl(path: string) {
-  const { data } = await supabase.storage.from(ATTACHMENT_BUCKET).createSignedUrl(path, 60 * 60);
+export async function signedUrl(path: string, bucket: string = ATTACHMENT_BUCKET) {
+  const { data } = await supabase.storage.from(bucket).createSignedUrl(path, 60 * 60);
   return data?.signedUrl ?? null;
 }
 

@@ -83,6 +83,7 @@ export type TaskAttachment = {
   size: number;
   mime_type: string | null;
   storage_path: string;
+  bucket: string;
   created_by: string | null;
   created_at: string;
 };
@@ -93,4 +94,17 @@ export type TaskExtras = {
   reactions: Map<string, Reaction[]>;
   attachments: Map<string, TaskAttachment[]>;
   toggleReaction: (taskId: string, emoji: string) => void;
+};
+
+export type TeamFile = {
+  id: string;
+  team_id: string;
+  name: string;
+  size: number;
+  mime_type: string | null;
+  storage_path: string;
+  share_token: string | null;
+  share_expires_at: string | null;
+  created_by: string | null;
+  created_at: string;
 };

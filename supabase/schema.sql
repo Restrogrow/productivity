@@ -508,3 +508,79 @@ begin
   end if;
 end;
 $$;
+
+-- ---------- Team files (shared document library with public share links) ----------
+create table if not exists public.team_files (
+  id uuid primary key default gen_random_uuid(),
+  team_id uuid not null references public.teams (id) on delete cascade,
+  name text not null,
+  size bigint not null default 0,
+  mime_type text,
+  storage_path text not null,
+  share_token text unique,
+  share_expires_at timestamptz,
+  created_by uuid references public.profiles (id) on delete set null default auth.uid(),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists team_files_team_idx on public.team_files (team_id, created_at desc);
+
+alter table public.team_files enable row level security;
+
+drop policy if exists "team_files_all" on public.team_files;
+create policy "team_files_all" on public.team_files for all to authenticated
+  using (public.is_team_member(team_id)) with check (public.is_team_member(team_id));
+
+-- True when a stored object currently has a valid public share link.
+create or replace function public.is_file_shared(path text)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from team_files f
+    where f.storage_path = path
+      and f.share_token is not null
+      and (f.share_expires_at is null or f.share_expires_at > now())
+  );
+$$;
+
+-- Look up a shared file by its link token (callable without signing in).
+create or replace function public.get_shared_file(t text)
+returns table (name text, size bigint, mime_type text, storage_path text, shared_by text, created_at timestamptz, share_expires_at timestamptz)
+language sql stable security definer set search_path = public as $$
+  select f.name, f.size, f.mime_type, f.storage_path, coalesce(p.full_name, split_part(p.email, '@', 1)), f.created_at, f.share_expires_at
+  from team_files f
+  left join profiles p on p.id = f.created_by
+  where f.share_token = t
+    and (f.share_expires_at is null or f.share_expires_at > now())
+  limit 1;
+$$;
+
+grant execute on function public.get_shared_file(text) to anon, authenticated;
+grant execute on function public.is_file_shared(text) to anon, authenticated;
+
+insert into storage.buckets (id, name, public)
+values ('team-files', 'team-files', false)
+on conflict (id) do nothing;
+
+drop policy if exists "team_files_storage_select" on storage.objects;
+create policy "team_files_storage_select" on storage.objects for select to authenticated
+  using (bucket_id = 'team-files' and public.is_team_member(((storage.foldername(name))[1])::uuid));
+drop policy if exists "team_files_storage_shared" on storage.objects;
+create policy "team_files_storage_shared" on storage.objects for select to anon, authenticated
+  using (bucket_id = 'team-files' and public.is_file_shared(name));
+drop policy if exists "team_files_storage_insert" on storage.objects;
+create policy "team_files_storage_insert" on storage.objects for insert to authenticated
+  with check (bucket_id = 'team-files' and public.is_team_member(((storage.foldername(name))[1])::uuid));
+drop policy if exists "team_files_storage_delete" on storage.objects;
+create policy "team_files_storage_delete" on storage.objects for delete to authenticated
+  using (bucket_id = 'team-files' and public.is_team_member(((storage.foldername(name))[1])::uuid));
+
+do $$
+begin
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'team_files') then
+    alter publication supabase_realtime add table public.team_files;
+  end if;
+end;
+$$;
+
+-- Task attachments can point at a file from the shared library (bucket team-files).
+alter table public.task_attachments add column if not exists bucket text not null default 'attachments';

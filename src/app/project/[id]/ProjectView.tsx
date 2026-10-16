@@ -322,6 +322,8 @@ export default function ProjectView() {
           extras={extras}
           onUpload={taskAttachments.upload}
           onRemoveAttachment={taskAttachments.remove}
+          teamId={teamId}
+          onLinkFile={taskAttachments.linkFile}
           onClose={() => setEditing(null)}
           onSave={(changes) => {
             updateTask(editing.id, changes);

@@ -1,8 +1,9 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { supabase } from "@/lib/supabase";
 import { formatBytes, signedUrl } from "@/lib/attachments";
-import type { Column, Priority, Task, TaskAttachment, TaskExtras, TeamMember } from "@/lib/types";
+import type { Column, Priority, Task, TaskAttachment, TaskExtras, TeamFile, TeamMember } from "@/lib/types";
 import Reactions from "./Reactions";
 
 type Props = {
@@ -16,9 +17,11 @@ type Props = {
   /** Resolves to an error message, or null on success. */
   onUpload?: (taskId: string, file: File) => Promise<string | null>;
   onRemoveAttachment?: (attachment: TaskAttachment) => void;
+  teamId?: string | null;
+  onLinkFile?: (taskId: string, file: TeamFile) => Promise<string | null>;
 };
 
-export default function TaskModal({ task, columns, members, onClose, onSave, onDelete, extras, onUpload, onRemoveAttachment }: Props) {
+export default function TaskModal({ task, columns, members, onClose, onSave, onDelete, extras, onUpload, onRemoveAttachment, teamId, onLinkFile }: Props) {
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description ?? "");
   const [columnId, setColumnId] = useState(task.column_id);
@@ -31,6 +34,29 @@ export default function TaskModal({ task, columns, members, onClose, onSave, onD
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const attachments = extras?.attachments.get(task.id) ?? [];
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [library, setLibrary] = useState<TeamFile[] | null>(null);
+
+  // Load the shared library the first time the picker is opened.
+  useEffect(() => {
+    if (!pickerOpen || library || !teamId) return;
+    let mounted = true;
+    void supabase
+      .from("team_files")
+      .select("*")
+      .eq("team_id", teamId)
+      .order("created_at", { ascending: false })
+      .then(({ data }) => mounted && setLibrary((data as TeamFile[]) ?? []));
+    return () => {
+      mounted = false;
+    };
+  }, [pickerOpen, library, teamId]);
+
+  async function linkLibraryFile(file: TeamFile) {
+    const err = await onLinkFile?.(task.id, file);
+    if (err) setUploadError(err);
+    else setPickerOpen(false);
+  }
 
   async function handleFiles(files: FileList | File[]) {
     if (!onUpload) return;
@@ -48,7 +74,7 @@ export default function TaskModal({ task, columns, members, onClose, onSave, onD
   }
 
   async function openAttachment(a: TaskAttachment) {
-    const url = await signedUrl(a.storage_path);
+    const url = await signedUrl(a.storage_path, a.bucket);
     if (url) window.open(url, "_blank", "noopener");
     else setUploadError("Could not open that file.");
   }
@@ -147,14 +173,25 @@ export default function TaskModal({ task, columns, members, onClose, onSave, onD
               <span className="text-xs text-slate-500">
                 Attachments{attachments.length > 0 && ` (${attachments.length})`}
               </span>
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploading}
-                className="text-xs font-medium text-indigo-600 hover:text-indigo-800 disabled:opacity-50"
-              >
-                {uploading ? "Uploading…" : "+ Add file"}
-              </button>
+              <div className="flex items-center gap-3">
+                {onLinkFile && teamId && (
+                  <button
+                    type="button"
+                    onClick={() => setPickerOpen((v) => !v)}
+                    className="text-xs font-medium text-indigo-600 hover:text-indigo-800"
+                  >
+                    From Files
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  className="text-xs font-medium text-indigo-600 hover:text-indigo-800 disabled:opacity-50"
+                >
+                  {uploading ? "Uploading…" : "+ Add file"}
+                </button>
+              </div>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -163,6 +200,31 @@ export default function TaskModal({ task, columns, members, onClose, onSave, onD
                 onChange={(e) => e.target.files && void handleFiles(e.target.files)}
               />
             </div>
+            {pickerOpen && (
+              <div className="max-h-40 overflow-y-auto rounded-lg border border-slate-200 bg-white">
+                {library === null ? (
+                  <p className="p-3 text-xs text-slate-400">Loading…</p>
+                ) : library.length === 0 ? (
+                  <p className="p-3 text-xs text-slate-400">No files in the library yet. Add some on the Files page.</p>
+                ) : (
+                  library.map((f) => {
+                    const already = attachments.some((a) => a.bucket === "team-files" && a.storage_path === f.storage_path);
+                    return (
+                      <button
+                        key={f.id}
+                        type="button"
+                        disabled={already}
+                        onClick={() => void linkLibraryFile(f)}
+                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-slate-50 disabled:opacity-40"
+                      >
+                        <span className="min-w-0 flex-1 truncate">{f.name}</span>
+                        <span className="shrink-0 text-xs text-slate-400">{already ? "Attached" : formatBytes(f.size)}</span>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            )}
             {attachments.length === 0 && !uploading && (
               <p className="text-xs text-slate-400">Drop files here or click “Add file” (max 10 MB each).</p>
             )}
