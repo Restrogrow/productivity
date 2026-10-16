@@ -64,3 +64,33 @@ export type Task = {
   position: number;
   created_at: string;
 };
+
+export type Reaction = {
+  id: string;
+  team_id: string;
+  target_type: "task" | "message";
+  target_id: string;
+  emoji: string;
+  user_id: string;
+  created_at: string;
+};
+
+export type TaskAttachment = {
+  id: string;
+  team_id: string;
+  task_id: string;
+  name: string;
+  size: number;
+  mime_type: string | null;
+  storage_path: string;
+  created_by: string | null;
+  created_at: string;
+};
+
+/** Reactions + attachments for tasks, passed down to the board and task modal. */
+export type TaskExtras = {
+  userId: string | undefined;
+  reactions: Map<string, Reaction[]>;
+  attachments: Map<string, TaskAttachment[]>;
+  toggleReaction: (taskId: string, emoji: string) => void;
+};

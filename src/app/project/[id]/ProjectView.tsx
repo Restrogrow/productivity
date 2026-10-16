@@ -11,9 +11,11 @@ import TaskList from "@/components/TaskList";
 import TaskModal from "@/components/TaskModal";
 import { supabase } from "@/lib/supabase";
 import { useCollaboration } from "@/lib/useCollaboration";
+import { useReactions } from "@/lib/useReactions";
+import { useTaskAttachments } from "@/lib/useTaskAttachments";
 import { useUser } from "@/lib/useUser";
 import { createNotification } from "@/lib/useNotifications";
-import type { Column, Project, Task, TeamMember } from "@/lib/types";
+import type { Column, Project, Task, TaskExtras, TeamMember } from "@/lib/types";
 
 export default function ProjectView() {
   const { id } = useParams<{ id: string }>();
@@ -64,6 +66,16 @@ export default function ProjectView() {
   const collab = useCollaboration(id, user?.id, myName, syncAll);
   const { notifyChanged } = collab;
   const mainRef = useRef<HTMLElement>(null);
+
+  const teamId = project?.team_id ?? null;
+  const taskReactions = useReactions(teamId, user?.id, "task");
+  const taskAttachments = useTaskAttachments(teamId);
+  const extras: TaskExtras = {
+    userId: user?.id,
+    reactions: taskReactions.byTarget,
+    attachments: taskAttachments.byTask,
+    toggleReaction: taskReactions.toggle,
+  };
 
   // Live database changes from teammates, applied straight into state.
   // Delete events only carry the row id, so they can't be filtered by project.
@@ -295,6 +307,7 @@ export default function ProjectView() {
               onDeleteColumn={deleteColumn}
               remoteDragging={collab.dragging}
               onDragStateChange={collab.sendDrag}
+              extras={extras}
             />
           )}
         </div>
@@ -306,6 +319,9 @@ export default function ProjectView() {
           task={editing}
           columns={columns}
           members={members}
+          extras={extras}
+          onUpload={taskAttachments.upload}
+          onRemoveAttachment={taskAttachments.remove}
           onClose={() => setEditing(null)}
           onSave={(changes) => {
             updateTask(editing.id, changes);

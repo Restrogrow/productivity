@@ -427,3 +427,84 @@ create policy "notifications_update" on public.notifications for update to authe
 drop policy if exists "notifications_delete" on public.notifications;
 create policy "notifications_delete" on public.notifications for delete to authenticated
   using (user_id = auth.uid());
+
+-- ---------- Reactions (emoji on tasks and chat messages) ----------
+create table if not exists public.reactions (
+  id uuid primary key default gen_random_uuid(),
+  team_id uuid not null references public.teams (id) on delete cascade,
+  target_type text not null check (target_type in ('task', 'message')),
+  target_id uuid not null,
+  emoji text not null,
+  user_id uuid not null references public.profiles (id) on delete cascade default auth.uid(),
+  created_at timestamptz not null default now(),
+  unique (target_type, target_id, emoji, user_id)
+);
+
+create index if not exists reactions_team_idx on public.reactions (team_id, target_type);
+create index if not exists reactions_target_idx on public.reactions (target_type, target_id);
+
+alter table public.reactions enable row level security;
+
+drop policy if exists "reactions_select" on public.reactions;
+create policy "reactions_select" on public.reactions for select to authenticated
+  using (public.is_team_member(team_id));
+drop policy if exists "reactions_insert" on public.reactions;
+create policy "reactions_insert" on public.reactions for insert to authenticated
+  with check (public.is_team_member(team_id) and user_id = auth.uid());
+drop policy if exists "reactions_delete" on public.reactions;
+create policy "reactions_delete" on public.reactions for delete to authenticated
+  using (user_id = auth.uid());
+
+-- ---------- Task attachments ----------
+create table if not exists public.task_attachments (
+  id uuid primary key default gen_random_uuid(),
+  team_id uuid not null references public.teams (id) on delete cascade,
+  task_id uuid not null references public.tasks (id) on delete cascade,
+  name text not null,
+  size bigint not null default 0,
+  mime_type text,
+  storage_path text not null,
+  created_by uuid references public.profiles (id) on delete set null default auth.uid(),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists task_attachments_task_idx on public.task_attachments (task_id);
+create index if not exists task_attachments_team_idx on public.task_attachments (team_id);
+
+alter table public.task_attachments enable row level security;
+
+drop policy if exists "task_attachments_all" on public.task_attachments;
+create policy "task_attachments_all" on public.task_attachments for all to authenticated
+  using (public.is_team_member(team_id)) with check (public.is_team_member(team_id));
+
+-- Chat messages can carry one attached file too.
+alter table public.chat_messages add column if not exists attachment_path text;
+alter table public.chat_messages add column if not exists attachment_name text;
+alter table public.chat_messages add column if not exists attachment_type text;
+
+-- ---------- Storage bucket for attachments (tasks + chat) ----------
+-- Objects live under "<team_id>/..." so access can be limited to team members.
+insert into storage.buckets (id, name, public)
+values ('attachments', 'attachments', false)
+on conflict (id) do nothing;
+
+drop policy if exists "attachments_storage_select" on storage.objects;
+create policy "attachments_storage_select" on storage.objects for select to authenticated
+  using (bucket_id = 'attachments' and public.is_team_member(((storage.foldername(name))[1])::uuid));
+drop policy if exists "attachments_storage_insert" on storage.objects;
+create policy "attachments_storage_insert" on storage.objects for insert to authenticated
+  with check (bucket_id = 'attachments' and public.is_team_member(((storage.foldername(name))[1])::uuid));
+drop policy if exists "attachments_storage_delete" on storage.objects;
+create policy "attachments_storage_delete" on storage.objects for delete to authenticated
+  using (bucket_id = 'attachments' and public.is_team_member(((storage.foldername(name))[1])::uuid));
+
+do $$
+begin
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'reactions') then
+    alter publication supabase_realtime add table public.reactions;
+  end if;
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'task_attachments') then
+    alter publication supabase_realtime add table public.task_attachments;
+  end if;
+end;
+$$;

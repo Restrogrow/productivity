@@ -6,20 +6,51 @@ import { useRouter } from "next/navigation";
 import Header from "@/components/Header";
 import { supabase } from "@/lib/supabase";
 import { useUser } from "@/lib/useUser";
-import type { EodUpdate, Project, Team } from "@/lib/types";
+import type { EodUpdate, Priority, Project, Team } from "@/lib/types";
 
 function todayISO() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+type MyTask = {
+  id: string;
+  title: string;
+  project_id: string;
+  due_date: string | null;
+  priority: Priority;
+};
+
+const PRIORITY_RANK: Record<Priority, number> = { high: 0, medium: 1, low: 2 };
+const PRIORITY_DOT: Record<Priority, string> = { high: "bg-red-500", medium: "bg-amber-400", low: "bg-slate-300" };
+
+function greeting() {
+  const h = new Date().getHours();
+  return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+}
+
+function dueLabel(date: string | null, today: string) {
+  if (!date) return { text: "No due date", cls: "text-slate-400" };
+  if (date < today) return { text: "Overdue", cls: "font-semibold text-red-600" };
+  if (date === today) return { text: "Due today", cls: "font-semibold text-amber-600" };
+  return {
+    text: new Date(date + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+    cls: "text-slate-500",
+  };
+}
+
 export default function DashboardPage() {
   const user = useUser();
+  const userId = user?.id;
   const router = useRouter();
   const [team, setTeam] = useState<Team | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [stats, setStats] = useState<Record<string, { done: number; total: number; due: number }>>({});
   const [eods, setEods] = useState<EodUpdate[]>([]);
+  const [myTasks, setMyTasks] = useState<MyTask[]>([]);
+  const [totals, setTotals] = useState({ open: 0, done: 0, overdue: 0 });
+  const [search, setSearch] = useState("");
+  const [sort, setSort] = useState<"newest" | "name" | "progress">("newest");
   const [inviteCopied, setInviteCopied] = useState(false);
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState("");
@@ -62,7 +93,10 @@ export default function DashboardPage() {
     if (ids.length > 0) {
       const [{ data: cols }, { data: taskRows }] = await Promise.all([
         supabase.from("columns").select("id, project_id, position").in("project_id", ids),
-        supabase.from("tasks").select("project_id, column_id, due_date").in("project_id", ids),
+        supabase
+          .from("tasks")
+          .select("id, title, project_id, column_id, due_date, priority, assignee_id")
+          .in("project_id", ids),
       ]);
       const doneCol = new Map<string, string>(); // project_id -> last ("Done") column id
       const doneColPos = new Map<string, number>(); // project_id -> that column's position
@@ -78,17 +112,44 @@ export default function DashboardPage() {
       const nextStats: Record<string, { done: number; total: number; due: number }> = {};
       ids.forEach((id) => (nextStats[id] = { done: 0, total: 0, due: 0 }));
       const today = todayISO();
+      const mine: MyTask[] = [];
+      const nextTotals = { open: 0, done: 0, overdue: 0 };
       (taskRows ?? []).forEach((t) => {
         const s = nextStats[t.project_id as string];
         if (!s) return;
         s.total++;
         const isDone = doneCol.get(colProject.get(t.column_id as string) ?? "") === t.column_id;
-        if (isDone) s.done++;
-        else if (t.due_date && (t.due_date as string) <= today) s.due++;
+        if (isDone) {
+          s.done++;
+          nextTotals.done++;
+          return;
+        }
+        nextTotals.open++;
+        if (t.due_date && (t.due_date as string) <= today) s.due++;
+        if (t.due_date && (t.due_date as string) < today) nextTotals.overdue++;
+        if (t.assignee_id && t.assignee_id === userId) {
+          mine.push({
+            id: t.id as string,
+            title: t.title as string,
+            project_id: t.project_id as string,
+            due_date: t.due_date as string | null,
+            priority: t.priority as Priority,
+          });
+        }
       });
+      // Soonest due first (undated last), then highest priority.
+      mine.sort(
+        (a, b) =>
+          (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999") ||
+          PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority],
+      );
       setStats(nextStats);
+      setMyTasks(mine);
+      setTotals(nextTotals);
     } else {
       setStats({});
+      setMyTasks([]);
+      setTotals({ open: 0, done: 0, overdue: 0 });
     }
 
     const { data: eodData } = await supabase
@@ -100,7 +161,7 @@ export default function DashboardPage() {
     setEods((eodData as EodUpdate[]) ?? []);
 
     setLoading(false);
-  }, []);
+  }, [userId]);
 
   // On first signed-in load: join any pending invite from the /join/[token]
   // flow, then fetch the dashboard data once (no recursion into load).
@@ -182,6 +243,30 @@ export default function DashboardPage() {
   if (!user) return null;
 
   const initials = (user.email ?? "?").slice(0, 2).toUpperCase();
+  const today = todayISO();
+  const firstName = user.email?.split("@")[0] ?? "there";
+  const progressOf = (id: string) => (stats[id]?.total ? stats[id].done / stats[id].total : 0);
+  const projectName = (id: string) => projects.find((p) => p.id === id)?.name ?? "Project";
+  const visibleProjects = projects
+    .filter((p) => `${p.name} ${p.description ?? ""}`.toLowerCase().includes(search.trim().toLowerCase()))
+    .sort((a, b) =>
+      sort === "name"
+        ? a.name.localeCompare(b.name)
+        : sort === "progress"
+          ? progressOf(b.id) - progressOf(a.id)
+          : b.created_at.localeCompare(a.created_at),
+    );
+  const tiles = [
+    { label: "Projects", value: projects.length, icon: "📁", tone: "bg-indigo-50 text-indigo-700" },
+    { label: "Open tasks", value: totals.open, icon: "📝", tone: "bg-sky-50 text-sky-700" },
+    { label: "Completed", value: totals.done, icon: "✅", tone: "bg-emerald-50 text-emerald-700" },
+    {
+      label: "Overdue",
+      value: totals.overdue,
+      icon: "⏰",
+      tone: totals.overdue > 0 ? "bg-red-50 text-red-700" : "bg-slate-50 text-slate-500",
+    },
+  ];
 
   return (
     <>
@@ -192,10 +277,16 @@ export default function DashboardPage() {
           <div className="absolute -bottom-24 -left-16 h-56 w-56 rounded-full bg-sky-200/30 blur-3xl" />
           <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <p className="text-sm font-medium text-indigo-600">Shared workspace</p>
-              <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">Projects</h1>
+              <p className="text-sm font-medium text-indigo-600">
+                {new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
+              </p>
+              <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+                {greeting()}, {firstName} 👋
+              </h1>
               <p className="mt-2 max-w-2xl text-sm text-slate-600 sm:text-base">
-                Plan, track, and ship work together. {projects.length} {projects.length === 1 ? "project" : "projects"} so far.
+                {myTasks.length > 0
+                  ? `You have ${myTasks.length} open ${myTasks.length === 1 ? "task" : "tasks"} assigned to you.`
+                  : "Nothing assigned to you right now. Plan, track, and ship work together."}
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -208,7 +299,9 @@ export default function DashboardPage() {
                 </span>
                 <div>
                   <p className="text-sm font-semibold text-slate-900">{user.email?.split("@")[0]}</p>
-                  <p className="text-xs text-slate-500">{projects.length} active projects</p>
+                  <p className="text-xs text-slate-500">
+                    {projects.length} {projects.length === 1 ? "project" : "projects"}
+                  </p>
                 </div>
               </div>
               <button onClick={() => setCreateOpen((v) => !v)} className="btn-primary">
@@ -217,6 +310,20 @@ export default function DashboardPage() {
             </div>
           </div>
         </section>
+
+        {!loading && (
+          <section className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+            {tiles.map((t) => (
+              <div key={t.label} className="card flex items-center gap-3 p-4">
+                <span className={`flex h-11 w-11 items-center justify-center rounded-xl text-xl ${t.tone}`}>{t.icon}</span>
+                <div>
+                  <p className="text-2xl font-bold leading-none text-slate-900">{t.value}</p>
+                  <p className="mt-1 text-xs font-medium text-slate-500">{t.label}</p>
+                </div>
+              </div>
+            ))}
+          </section>
+        )}
 
         {createOpen && (
           <section className="mt-6">
@@ -246,6 +353,47 @@ export default function DashboardPage() {
         )}
 
         {error && <p className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
+
+        {!loading && (
+          <section className="card mt-6 p-5 sm:p-6">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-base font-semibold text-slate-900">My tasks</h2>
+              <span className="text-xs text-slate-400">Soonest due first</span>
+            </div>
+            {myTasks.length === 0 ? (
+              <p className="mt-3 text-sm text-slate-500">
+                You are all caught up 🎉 Tasks assigned to you will show up here.
+              </p>
+            ) : (
+              <ul className="mt-3 divide-y divide-slate-100">
+                {myTasks.slice(0, 6).map((t) => {
+                  const due = dueLabel(t.due_date, today);
+                  return (
+                    <li key={t.id}>
+                      <Link
+                        href={`/project/${t.project_id}`}
+                        className="-mx-2 flex items-center gap-3 rounded-lg px-2 py-2.5 transition hover:bg-slate-50"
+                      >
+                        <span
+                          className={`h-2 w-2 shrink-0 rounded-full ${PRIORITY_DOT[t.priority]}`}
+                          title={`${t.priority} priority`}
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium text-slate-800">{t.title}</span>
+                          <span className="block truncate text-xs text-slate-400">{projectName(t.project_id)}</span>
+                        </span>
+                        <span className={`shrink-0 text-xs ${due.cls}`}>{due.text}</span>
+                      </Link>
+                    </li>
+                  );
+                })}
+                {myTasks.length > 6 && (
+                  <li className="pt-2 text-xs text-slate-400">+{myTasks.length - 6} more across your projects</li>
+                )}
+              </ul>
+            )}
+          </section>
+        )}
 
         {team && (
           <section className="card mt-6 p-5 sm:p-6">
@@ -282,7 +430,33 @@ export default function DashboardPage() {
           </section>
         )}
 
-        <section className="mt-8">
+        {!loading && projects.length > 0 && (
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-lg font-semibold text-slate-900">
+              All projects <span className="text-sm font-normal text-slate-400">({visibleProjects.length})</span>
+            </h2>
+            <div className="flex items-center gap-2">
+              <input
+                className="input w-full sm:w-56"
+                placeholder="Search projects…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+              <select
+                className="input w-auto"
+                value={sort}
+                onChange={(e) => setSort(e.target.value as typeof sort)}
+                aria-label="Sort projects"
+              >
+                <option value="newest">Newest</option>
+                <option value="name">Name</option>
+                <option value="progress">Progress</option>
+              </select>
+            </div>
+          </div>
+        )}
+
+        <section className="mt-4">
           {loading ? (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {[0, 1, 2].map((i) => (
@@ -298,7 +472,12 @@ export default function DashboardPage() {
             </div>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {projects.map((p) => (
+              {visibleProjects.length === 0 && (
+                <p className="col-span-full py-10 text-center text-sm text-slate-500">
+                  No projects match &ldquo;{search}&rdquo;.
+                </p>
+              )}
+              {visibleProjects.map((p) => (
                 <Link
                   key={p.id}
                   href={`/project/${p.id}`}
@@ -316,7 +495,7 @@ export default function DashboardPage() {
                   <div className="mt-3">
                     <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
                       <div
-                        className="h-full rounded-full bg-indigo-500 transition-all"
+                        className={`h-full rounded-full transition-all ${progressOf(p.id) === 1 ? "bg-emerald-500" : "bg-indigo-500"}`}
                         style={{
                           width: `${
                             stats[p.id]?.total
@@ -328,7 +507,7 @@ export default function DashboardPage() {
                     </div>
                     <div className="mt-2 flex items-center justify-between text-xs">
                       <span className="text-slate-500">
-                        {stats[p.id]?.done ?? 0}/{stats[p.id]?.total ?? 0} done
+                        {stats[p.id]?.done ?? 0}/{stats[p.id]?.total ?? 0} done · {Math.round(progressOf(p.id) * 100)}%
                       </span>
                       {(stats[p.id]?.due ?? 0) > 0 && (
                         <span className="font-medium text-amber-600">{stats[p.id].due} due</span>

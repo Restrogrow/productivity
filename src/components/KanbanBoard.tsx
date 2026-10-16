@@ -16,8 +16,9 @@ import {
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { positionBetween } from "@/lib/position";
-import type { Column, Task, TeamMember } from "@/lib/types";
+import type { Column, Task, TaskExtras, TeamMember } from "@/lib/types";
 import type { Collaborator } from "@/lib/useCollaboration";
+import Reactions from "./Reactions";
 import { Avatar, DueDate, PriorityBadge } from "./TaskMeta";
 
 type Props = {
@@ -32,6 +33,7 @@ type Props = {
   onDeleteColumn: (columnId: string) => void;
   remoteDragging: Record<string, Collaborator>;
   onDragStateChange: (taskId: string | null) => void;
+  extras?: TaskExtras;
 };
 
 export default function KanbanBoard(props: Props) {
@@ -111,7 +113,7 @@ export default function KanbanBoard(props: Props) {
         ))}
       </div>
 
-      <DragOverlay>{activeTask && <TaskCard task={activeTask} members={members} dragging />}</DragOverlay>
+      <DragOverlay>{activeTask && <TaskCard task={activeTask} members={members} extras={props.extras} dragging />}</DragOverlay>
     </DndContext>
   );
 }
@@ -126,6 +128,7 @@ function KanbanColumn({
   onRenameColumn,
   onDeleteColumn,
   remoteDragging,
+  extras,
 }: Props & { column: Column; tasks: Task[]; highlighted: boolean }) {
   const { setNodeRef } = useDroppable({ id: `column-${column.id}`, data: { type: "column", columnId: column.id } });
   const [adding, setAdding] = useState(false);
@@ -165,6 +168,7 @@ function KanbanColumn({
               members={members}
               onOpen={onOpen}
               movedBy={remoteDragging[task.id]}
+              extras={extras}
             />
           ))}
           {tasks.length === 0 && (
@@ -210,11 +214,13 @@ function SortableTask({
   members,
   onOpen,
   movedBy,
+  extras,
 }: {
   task: Task;
   members: TeamMember[];
   onOpen: (t: Task) => void;
   movedBy?: Collaborator;
+  extras?: TaskExtras;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id,
@@ -230,7 +236,7 @@ function SortableTask({
       {...attributes}
       {...listeners}
     >
-      <TaskCard task={task} members={members} movedBy={movedBy} />
+      <TaskCard task={task} members={members} movedBy={movedBy} extras={extras} />
     </div>
   );
 }
@@ -240,12 +246,15 @@ function TaskCard({
   members,
   dragging,
   movedBy,
+  extras,
 }: {
   task: Task;
   members: TeamMember[];
   dragging?: boolean;
   movedBy?: Collaborator;
+  extras?: TaskExtras;
 }) {
+  const attachmentCount = extras?.attachments.get(task.id)?.length ?? 0;
   return (
     <div
       className={`relative cursor-grab rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition-all hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-md ${dragging ? "rotate-2 shadow-lg" : ""} ${movedBy ? "animate-pulse" : ""}`}
@@ -267,6 +276,24 @@ function TaskCard({
           <Avatar userId={task.assignee_id} members={members} />
         </span>
       </div>
+      {(attachmentCount > 0 || extras?.reactions.has(task.id)) && (
+        <div className="mt-2 flex items-center gap-2">
+          {extras && (
+            <Reactions
+              compact
+              hideAdd
+              reactions={extras.reactions.get(task.id) ?? []}
+              userId={extras.userId}
+              onToggle={(emoji) => extras.toggleReaction(task.id, emoji)}
+            />
+          )}
+          {attachmentCount > 0 && (
+            <span className="ml-auto text-[11px] text-slate-500" title={`${attachmentCount} attachment(s)`}>
+              📎 {attachmentCount}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
